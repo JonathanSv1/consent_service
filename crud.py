@@ -48,7 +48,7 @@ def current_user(token: str = Depends(oauth2_scheme)):
     if user is None:
         raise HTTPException(status_code=400, detail="Token invalid")
     else:
-        return user
+        return user.user_id
 
 def check_data_owner(token: str = Depends(get_current_user)):
     session = connect_db()
@@ -61,13 +61,19 @@ def check_data_owner(token: str = Depends(get_current_user)):
     else:
         return user
 
-def current(token: str = Depends(oauth2_scheme)):
+def check_user(token: str = Depends(get_current_user)):
     session = connect_db()
-    payload = decode_token(token)
-    user = session.query(UserAccount).filter(UserAccount.username == payload["username"]).first()
-    roles = session.query(Roles).filter(Roles.role_id == user.role_id).first()
-    if user is None:
-        raise HTTPException(status_code=400, detail="Token invalid")
+    users = session.query(UserAccount).filter(UserAccount.username == token).first()
+    roles = session.query(Roles).filter(Roles.role_id == users.role_id).first()
+    if users.role_id == 1:
+        return {"username": users.username, "name": users.name, "role": roles.role_name}
+    if users.role_id == 2:
+        return {"username": users.username, "name": users.name, "role": roles.role_name}
+    if users.role_id == 3:
+        return {"username": users.username, "name": users.name, "role": roles.role_name}
     else:
-        return {"user_id": user.user_id, "username": user.username, "name": user.name, "role": roles.role_name}
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="you are not authorized to access this route!!"
+        )
 

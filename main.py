@@ -11,7 +11,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from services import Object, Roles, UserAccount
 from enum import Enum
-from crud import  current, current_user, check_data_owner, decode_token
+from crud import  check_user, current_user, check_data_owner, decode_token
 
 
 
@@ -55,7 +55,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
 #List object : TABLE object
-@app.get("/list_object", tags=["Data Owner"],dependencies=[Depends(check_data_owner)])
+@app.get("/list_object", tags=["Data Owner"])
 def get_object():
     session = connect_db()
     objects = session.query(Object).all()
@@ -66,7 +66,7 @@ def get_object():
     return object_list
 
 #Insert object : TABLE object
-@app.post("/insert/", dependencies=[Depends(check_data_owner)])
+@app.post("/insert_object/", tags=["Data Owner"],dependencies=[Depends(check_data_owner)])
 def insert_object(object_name: str, show: bool, process: bool, forward: bool, expire: int,consent_method: Consent_method,user_id: int = Depends(current_user)):
     session = connect_db()
     new_object = Object(object_name=object_name, user_id=user_id.user_id, show=show, process=process, forward=forward, expire=expire, consent_method=consent_method)
@@ -137,9 +137,9 @@ async def login_for_access_token(from_data: OAuth2PasswordRequestForm = Depends(
         )
 
 # Check current user
-@app.get("/users/me")
-async def read_users_me(current_user: str = Depends(current_user)):
-    return {"username": current_user}
+@app.get("/users/me", tags=["Check Users"])
+async def read_users_me(current_user: str = Depends(check_user)):
+    return {"current user is": current_user}
 
 
 
