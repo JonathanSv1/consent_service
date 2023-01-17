@@ -44,11 +44,11 @@ def current_user(token: str = Depends(oauth2_scheme)):
     session = connect_db()
     payload = decode_token(token)
     user = session.query(UserAccount).filter(UserAccount.username == payload["username"]).first()
-    roles = session.query(Roles).filter(Roles.role_id == user.role_id).first()
+    #roles = session.query(Roles).filter(Roles.role_id == user.role_id).first()
     if user is None:
         raise HTTPException(status_code=400, detail="Token invalid")
     else:
-        return {"username": user.username, "name": user.name, "role": roles.role_name}
+        return user
 
 def check_data_owner(token: str = Depends(get_current_user)):
     session = connect_db()
@@ -60,4 +60,14 @@ def check_data_owner(token: str = Depends(get_current_user)):
         )
     else:
         return user
+
+def current(token: str = Depends(oauth2_scheme)):
+    session = connect_db()
+    payload = decode_token(token)
+    user = session.query(UserAccount).filter(UserAccount.username == payload["username"]).first()
+    roles = session.query(Roles).filter(Roles.role_id == user.role_id).first()
+    if user is None:
+        raise HTTPException(status_code=400, detail="Token invalid")
+    else:
+        return {"user_id": user.user_id, "username": user.username, "name": user.name, "role": roles.role_name}
 

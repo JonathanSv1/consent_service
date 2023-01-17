@@ -11,7 +11,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from services import Object, Roles, UserAccount
 from enum import Enum
-from crud import  current_user, check_data_owner, decode_token
+from crud import  current, current_user, check_data_owner, decode_token
 
 
 
@@ -66,10 +66,10 @@ def get_object():
     return object_list
 
 #Insert object : TABLE object
-@app.post("/insert_object/", tags=["Data Owner"], dependencies=[Depends(check_data_owner)])
-def insert_object(object_name: str, show: bool, process: bool, forward: bool):
+@app.post("/insert/", dependencies=[Depends(check_data_owner)])
+def insert_object(object_name: str, show: bool, process: bool, forward: bool, expire: int,consent_method: Consent_method,user_id: int = Depends(current_user)):
     session = connect_db()
-    new_object = Object(object_name=object_name, show=show, process=process, forward=forward)
+    new_object = Object(object_name=object_name, user_id=user_id.user_id, show=show, process=process, forward=forward, expire=expire, consent_method=consent_method)
     session.add(new_object)
     session.commit()
     session.close()
@@ -142,11 +142,7 @@ async def read_users_me(current_user: str = Depends(current_user)):
     return {"username": current_user}
 
 
-@app.post("/insert/", dependencies=[Depends(check_data_owner)])
-def insert_object(object_name: str, show: bool, process: bool, forward: bool, current_user = Depends(current_user)):
-    session = connect_db()
-    new_object = Object(object_name=object_name, owner_id = current_user["user_id"], show = show, process = process, forward = forward)
-    session.add(new_object)
-    session.commit()
-    session.close()
-    return {"Object insert success!!": new_object}
+
+
+
+
