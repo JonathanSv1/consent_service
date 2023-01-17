@@ -19,7 +19,7 @@ class UserAccount(Base):
 class Object(Base):
     __tablename__ = 'object'
     object_id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey(UserAccount.user_id))
+    owner_id = Column(Integer, ForeignKey(UserAccount.user_id))
     object_name = Column(String)
     object_field = Column(String)
     show = Column(Integer)

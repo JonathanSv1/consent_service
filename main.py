@@ -67,9 +67,9 @@ def get_object():
 
 #Insert object : TABLE object
 @app.post("/insert_object/", tags=["Data Owner"],dependencies=[Depends(check_data_owner)])
-def insert_object(object_name: str, show: bool, process: bool, forward: bool, expire: int,consent_method: Consent_method,user_id: int = Depends(current_user)):
+def insert_object(object_name: str, show: bool, process: bool, forward: bool, expire: int, consent_method: Consent_method, owner_id: int = Depends(current_user)):
     session = connect_db()
-    new_object = Object(object_name=object_name, user_id=user_id.user_id, show=show, process=process, forward=forward, expire=expire, consent_method=consent_method)
+    new_object = Object(object_name=object_name, owner_id = owner_id, show=show, process=process, forward=forward, expire=expire, consent_method=consent_method)
     session.add(new_object)
     session.commit()
     session.close()
@@ -141,8 +141,12 @@ async def login_for_access_token(from_data: OAuth2PasswordRequestForm = Depends(
 async def read_users_me(current_user: str = Depends(check_user)):
     return {"current user is": current_user}
 
-
-
-
-
+# Test consent_dataset
+@app.get("/objects/null-consent-method")
+def list_obj_with_null_consent_method():
+    session = connect_db()
+    objects = session.query(Object).filter(Object.consent_method.is_(None)).all()
+    if not objects:
+        raise HTTPException(status_code=404, detail="No objects with null consent method found.")
+    return objects
 

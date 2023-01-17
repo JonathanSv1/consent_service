@@ -64,13 +64,12 @@ def check_data_owner(token: str = Depends(get_current_user)):
 def check_user(token: str = Depends(get_current_user)):
     session = connect_db()
     users = session.query(UserAccount).filter(UserAccount.username == token).first()
-    roles = session.query(Roles).filter(Roles.role_id == users.role_id).first()
     if users.role_id == 1:
-        return {"username": users.username, "name": users.name, "role": roles.role_name}
+        return users
     if users.role_id == 2:
-        return {"username": users.username, "name": users.name, "role": roles.role_name}
+        return users
     if users.role_id == 3:
-        return {"username": users.username, "name": users.name, "role": roles.role_name}
+        return users
     else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
