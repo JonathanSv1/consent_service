@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Union
 from connect_database import connect_db
 
@@ -9,9 +9,9 @@ from pydantic import BaseModel
 from login import create_access_token, SECRET_KEY, ALGORITHM
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from services import Object, Roles, UserAccount
+from services import Consent_dataset, Object, Roles, UserAccount
 from enum import Enum
-from crud import  check_user, current_user, check_data_owner, decode_token
+from crud import  check_user, current_user, check_data_owner, decode_token, get_current_user
 
 
 
@@ -141,12 +141,30 @@ async def login_for_access_token(from_data: OAuth2PasswordRequestForm = Depends(
 async def read_users_me(current_user: str = Depends(check_user)):
     return {"current user is": current_user}
 
-# Test consent_dataset
-@app.get("/objects/null-consent-method")
-def list_obj_with_null_consent_method():
+# Test list object type "user"
+@app.get("/list_object/consent_method/user")
+def list_objects():
     session = connect_db()
-    objects = session.query(Object).filter(Object.consent_method.is_(None)).all()
-    if not objects:
-        raise HTTPException(status_code=404, detail="No objects with null consent method found.")
-    return objects
+    objects_user = session.query(Object).filter(Object.consent_method == "user").all()
+    return objects_user
 
+# consent dataset
+@app.post("/consent_dataset")
+def consent_dataset(object_id: int, user_id: int = Depends(current_user)):
+    session = connect_db()
+    cs_date = datetime.now()
+    obj = session.query(Object).filter(Object.object_id == object_id).first()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Object not found")
+    if obj.consent_method != "user":
+        raise HTTPException(status_code=404, detail="Invalid consent method")
+    existing_consent = session.query(Consent_dataset).filter(Consent_dataset.object_id == object_id, Consent_dataset.user_id == user_id).first()
+    if existing_consent:
+        raise HTTPException(status_code=400, detail="Object has already been consented")
+    obj_expire = obj.expire
+    obj_name = obj.object_name
+    consent = Consent_dataset(consent_dataset_date = cs_date, user_id = user_id, object_id = object_id, expire=obj_expire)
+    session.add(consent)
+    session.commit()
+    session.close()
+    return {"object consented name": obj_name}

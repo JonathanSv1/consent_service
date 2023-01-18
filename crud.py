@@ -61,6 +61,17 @@ def check_data_owner(token: str = Depends(get_current_user)):
     else:
         return user
 
+def check_end_user(token: str = Depends(get_current_user)):
+    session = connect_db()
+    user = session.query(UserAccount).filter(UserAccount.username == token).first()
+    if user.role_id != 1:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="this route only access by End User!!"
+        )
+    else:
+        return user
+
 def check_user(token: str = Depends(get_current_user)):
     session = connect_db()
     users = session.query(UserAccount).filter(UserAccount.username == token).first()

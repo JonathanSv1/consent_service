@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, Date
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -17,7 +17,7 @@ class UserAccount(Base):
     role_id = Column(Integer, ForeignKey(Roles.role_id))
 
 class Object(Base):
-    __tablename__ = 'object'
+    __tablename__ = 'object_dataset'
     object_id = Column(Integer, primary_key=True)
     owner_id = Column(Integer, ForeignKey(UserAccount.user_id))
     object_name = Column(String)
@@ -27,3 +27,12 @@ class Object(Base):
     forward = Column(Integer)
     expire = Column(Integer)
     consent_method = Column(String)
+
+class Consent_dataset(Base):
+    __tablename__ = 'consent_dataset'
+    consent_dataset_id = Column(Integer, primary_key=True)
+    consent_dataset_date = Column(Date)
+    user_id = Column(Integer, ForeignKey(UserAccount.user_id))
+    object_id = Column(Integer, ForeignKey(Object.object_id))
+    expire = Column(Integer)
+    revoke_date = Column(Date)
