@@ -77,16 +77,20 @@ def insert_object(object_name: str, show: bool, process: bool, forward: bool, ex
 
 #Delete object : TABLE object
 @app.delete("/delete/{object_id}", tags=["Data Owner"], dependencies=[Depends(check_data_owner)])
-def delete_object(object_id: int, token: str = Depends(oauth2_scheme)):
+def delete_object(object_id: int, user_id: int = Depends(current_user)):
     session = connect_db()
     obj = session.query(Object).filter(Object.object_id == object_id).first()
-    if obj:
+    if obj and obj.owner_id == user_id:
         session.delete(obj)
         session.commit()
         return {"Object deleted success!!"}
+    elif obj and obj.owner_id != user_id:
+        session.close()
+        raise HTTPException(status_code=400, detail="You are not authorized to delete this object")
     else:
         session.close()
-        return {"error": "Object not found"}
+        raise HTTPException(status_code=400, detail="Object not found")
+
 
 #Update object : TABlE object
 @app.put("/update/{object_id}", tags=["Data Owner"], dependencies=[Depends(check_data_owner)])
