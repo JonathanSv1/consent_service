@@ -190,7 +190,7 @@ def update_revoke_date(consent_dataset_id: int, user_id: int = Depends(current_u
     return {"consent has been revoke"}
 
 
-# Test list object type "per_request"
+# list object type "per_request"
 @app.get("/list_object/consent_method/per_req")
 def list_objects():
     session = connect_db()
@@ -215,3 +215,25 @@ def consent_request(object_id: int, req_info: str):
     session.commit()
     session.close()
     return {"A consent request has been sent to the End_User"}
+
+# consent response
+@app.put("/consent_response/{request_id}")
+def consent_response(request_id: int,response: bool):
+    session = connect_db()
+    req = session.query(Consent_request).filter(Consent_request.request_id == request_id).first()
+    if req is None:
+        raise HTTPException(status_code=404, detail="Request not found")
+    req.response = response
+    req.response_date = datetime.now()
+    session.commit()
+    session.close()
+    return {"Consent request has been response"}
+
+# list consent request
+@app.get("/list_request")
+def list_consent_request():
+    session = connect_db()
+    list_req = session.query(Consent_request).filter(Consent_request.response == None).all()
+    if not list_req:
+        raise HTTPException(status_code=404, detail="No consent request")
+    return list_req
