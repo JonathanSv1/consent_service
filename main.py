@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from login import create_access_token, SECRET_KEY, ALGORITHM
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from services import Consent_dataset, Object, Roles, UserAccount
+from services import Consent_dataset, Consent_request, Object, Roles, UserAccount
 from enum import Enum
 from crud import  check_user, current_user, check_data_owner, decode_token, get_current_user
 
@@ -147,7 +147,7 @@ async def read_users_me(current_user: str = Depends(check_user)):
     return {"current user is": current_user}
 
 
-# Test list object type "user"
+# list object type "user"
 @app.get("/list_object/consent_method/user", tags=["Consent Dataset"])
 def list_objects():
     session = connect_db()
@@ -188,3 +188,30 @@ def update_revoke_date(consent_dataset_id: int, user_id: int = Depends(current_u
     session.commit()
     session.close()
     return {"consent has been revoke"}
+
+
+# Test list object type "per_request"
+@app.get("/list_object/consent_method/per_req")
+def list_objects():
+    session = connect_db()
+    objects_user = session.query(Object).filter(Object.consent_method == "per_request").all()
+    return objects_user
+
+# consent request
+@app.post("/consent_request")
+def consent_request(object_id: int, req_info: str):
+    session = connect_db()
+    req_date = datetime.now()
+    obj = session.query(Object).filter(Object.object_id == object_id).first()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Object not found")
+    if obj.consent_method != "per_request":
+        raise HTTPException(status_code=404, detail="Invalid consent method")
+    existing_request = session.query(Consent_request).filter(Consent_request.object_id == object_id).first()
+    if existing_request:
+        raise HTTPException(status_code=400, detail="A consent request has been sent for this object")
+    cs_req = Consent_request(request_date = req_date, request_info = req_info, object_id = obj.object_id)
+    session.add(cs_req)
+    session.commit()
+    session.close()
+    return {"A consent request has been sent to the End_User"}
