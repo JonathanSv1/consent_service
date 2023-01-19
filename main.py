@@ -140,20 +140,23 @@ async def login_for_access_token(from_data: OAuth2PasswordRequestForm = Depends(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+
 # Check current user
 @app.get("/users/me", tags=["Check Users"])
 async def read_users_me(current_user: str = Depends(check_user)):
     return {"current user is": current_user}
 
+
 # Test list object type "user"
-@app.get("/list_object/consent_method/user")
+@app.get("/list_object/consent_method/user", tags=["Consent Dataset"])
 def list_objects():
     session = connect_db()
     objects_user = session.query(Object).filter(Object.consent_method == "user").all()
     return objects_user
 
-# consent dataset
-@app.post("/consent_dataset")
+
+# Consent dataset
+@app.post("/consent_dataset", tags=["Consent Dataset"])
 def consent_dataset(object_id: int, user_id: int = Depends(current_user)):
     session = connect_db()
     cs_date = datetime.now()
@@ -164,7 +167,7 @@ def consent_dataset(object_id: int, user_id: int = Depends(current_user)):
         raise HTTPException(status_code=404, detail="Invalid consent method")
     existing_consent = session.query(Consent_dataset).filter(Consent_dataset.object_id == object_id, Consent_dataset.user_id == user_id).first()
     if existing_consent:
-        raise HTTPException(status_code=400, detail="Object has already been consented")
+        raise HTTPException(status_code=400, detail="Object has been consented")
     obj_expire = obj.expire
     obj_name = obj.object_name
     consent = Consent_dataset(consent_dataset_date = cs_date, user_id = user_id, object_id = object_id, expire=obj_expire)
@@ -172,3 +175,16 @@ def consent_dataset(object_id: int, user_id: int = Depends(current_user)):
     session.commit()
     session.close()
     return {"object consented name": obj_name}
+
+
+# revoke consent : update revoke_date
+@app.put("/revoke/{consent_dataset_id}", tags=["Consent Dataset"])
+def update_revoke_date(consent_dataset_id: int, user_id: int = Depends(current_user)):
+    session = connect_db()
+    consent = session.query(Consent_dataset).filter(Consent_dataset.consent_dataset_id == consent_dataset_id, Consent_dataset.user_id == user_id).first()
+    if consent is None:
+        raise HTTPException(status_code=404, detail="Object not found or not consented by user")
+    consent.revoke_date = datetime.now()
+    session.commit()
+    session.close()
+    return {"consent has been revoke"}
