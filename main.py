@@ -237,3 +237,10 @@ def list_consent_request():
     if not list_req:
         raise HTTPException(status_code=404, detail="No consent request")
     return list_req
+
+# จากตาราง consent_dataset 
+@app.get("/check_coonsented")
+def check_consented(object_id: int):
+    session = connect_db()
+    consented = session.query(Consent_dataset).filter(Consent_dataset.object_id == object_id).all()
+    return consented
