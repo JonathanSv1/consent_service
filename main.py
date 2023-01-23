@@ -12,6 +12,7 @@ from passlib.context import CryptContext
 from services import Consent_dataset, Consent_request, Object, Roles, UserAccount
 from enum import Enum
 from crud import  check_data_consumer, check_end_user, current_user, check_data_owner, decode_token, get_current_user
+from sqlalchemy.sql import and_
 
 
 
@@ -55,13 +56,13 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
 #List object : TABLE object
-@app.get("/list_object", tags=["Data Owner"])
+@app.get("/list_all_object", tags=["Data Consumer"])
 def get_object():
     session = connect_db()
     objects = session.query(Object).all()
     object_list = []
     for obj in objects:
-        object_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "show": obj.show, "process": obj.process, "forward": obj.forward, "expire": obj.expire})
+        object_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "show": obj.show, "process": obj.process, "forward": obj.forward, "expire": obj.expire, "consent_method": obj.consent_method})
     session.close()
     return object_list
 
@@ -207,8 +208,11 @@ def update_revoke_date(consent_dataset_id: int, user_id: int = Depends(current_u
 @app.get("/list_object/consent_method/per_req", tags=["Data Consumer"])
 def list_req():
     session = connect_db()
-    objects_user = session.query(Object).filter(Object.consent_method == "per_request").all()
-    return objects_user
+    objects = session.query(Object).filter(Object.consent_method == "per_request").all()
+    obj_list = []
+    for obj in objects:
+        obj_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "show": obj.show, "process": obj.process, "forward": obj.forward, "expire": obj.expire, "consent_method": obj.consent_method})
+    return obj_list
 
 # consent request
 @app.post("/consent_request", tags=["Data Consumer"])
@@ -223,11 +227,26 @@ def consent_request(object_id: int, req_info: str, user_id: int = Depends(check_
     existing_request = session.query(Consent_request).filter(Consent_request.object_id == object_id, Consent_request.consumer_id == user_id).first()
     if existing_request:
         raise HTTPException(status_code=400, detail="A consent request has been sent for this object")
-    cs_req = Consent_request(request_date = req_date, request_info = req_info, object_id = obj.object_id, consumer_id = user_id)
-    session.add(cs_req)
+    end_user = session.query(UserAccount).filter(UserAccount.role_id == 1).all()
+    for user in end_user:
+        cs_req = Consent_request(request_date = req_date, request_info = req_info, object_id = obj.object_id, user_id = user.user_id, consumer_id = user_id)
+        session.add(cs_req)
     session.commit()
     session.close()
     return {"A consent request has been sent to the End_User"}
+
+
+# list consent request
+@app.get("/list_request")
+def list_consent_request(user_id: int = Depends(check_end_user)):
+    session = connect_db()
+    request = session.query(Consent_request).filter(and_(Consent_request.response == None, Consent_request.user_id == user_id)).all()
+    if not request:
+        raise HTTPException(status_code=404, detail="No consent request for this user")
+    req_list = []
+    for req in request:
+        req_list.append({"request_id": req.request_id, "object_id": req.object_id, "user_id": req.user_id, "consumer_id": req.consumer_id, "request_date": req.request_date, "request_info": req.request_info, "response": req.response, "response_date": req.response_date})
+    return req_list
 
 
 # consent response
@@ -235,24 +254,15 @@ def consent_request(object_id: int, req_info: str, user_id: int = Depends(check_
 def consent_response(request_id: int,response: bool, user_id: int = Depends(check_end_user)):
     session = connect_db()
     res = session.query(Consent_request).filter(Consent_request.request_id == request_id).first()
-    if res is None:
-        raise HTTPException(status_code=404, detail="Request not found")
-    res.response = response
-    res.response_date = datetime.now()
-    res.user_id = user_id
-    session.commit()
-    session.close()
-    return {"Consent request has been response"}
+    if res and res.user_id == user_id:
+        res.response = response
+        res.response_date = datetime.now()
+        session.commit()
+        session.close()
+        return {"Consent request has been response"}
+    else:
+        raise HTTPException(status_code=404, detail="Consent request not found")
 
-
-# list consent request
-@app.get("/list_request")
-def list_consent_request():
-    session = connect_db()
-    list_req = session.query(Consent_request).filter(Consent_request.response == None).all()
-    if not list_req:
-        raise HTTPException(status_code=404, detail="No consent request")
-    return list_req
 
 
 # จากตาราง consent_dataset 
@@ -260,6 +270,10 @@ def list_consent_request():
 def check_consented(object_id: int):
     session = connect_db()
     consented = session.query(Consent_dataset).filter(Consent_dataset.object_id == object_id).all()
-    if consented is None:
+    if consented:
+        return consented
+    obj = session.query(Object).filter(Object.object_id == object_id, Object.consent_method == "always").first()
+    if obj:
+        return obj
+    else:
         raise HTTPException(status_code=404, detail="This object has not received consent from the End_user.")
-    return consented
