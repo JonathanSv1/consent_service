@@ -59,7 +59,7 @@ def check_data_owner(token: str = Depends(get_current_user)):
             detail="this route only access by Data Owner!!"
         )
     else:
-        return user
+        return user.user_id
 
 def check_end_user(token: str = Depends(get_current_user)):
     session = connect_db()
@@ -70,20 +70,16 @@ def check_end_user(token: str = Depends(get_current_user)):
             detail="this route only access by End User!!"
         )
     else:
-        return user
+        return user.user_id
 
-def check_user(token: str = Depends(get_current_user)):
+def check_data_consumer(token: str = Depends(get_current_user)):
     session = connect_db()
-    users = session.query(UserAccount).filter(UserAccount.username == token).first()
-    if users.role_id == 1:
-        return users
-    if users.role_id == 2:
-        return users
-    if users.role_id == 3:
-        return users
-    else:
+    user = session.query(UserAccount).filter(UserAccount.username == token).first()
+    if user.role_id != 3:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="you are not authorized to access this route!!"
+            detail="this route only access by Data Consumer!!"
         )
+    else:
+        return user.user_id
 

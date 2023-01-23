@@ -46,3 +46,4 @@ class Consent_request(Base):
     user_id = Column(Integer, ForeignKey(UserAccount.user_id))
     response = Column(Boolean)
     response_date = Column(Date)
+    consumer_id = Column(Integer, ForeignKey(UserAccount.user_id))
