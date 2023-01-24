@@ -85,7 +85,7 @@ def delete_object(object_id: int, user_id: int = Depends(current_user)):
         session.delete(obj)
         session.commit()
         return {"Object deleted success!!"}
-    elif obj and obj.owner_id != user_id:
+    if obj and obj.owner_id != user_id:
         session.close()
         raise HTTPException(status_code=400, detail="You are not authorized to delete this object")
     else:
@@ -94,20 +94,24 @@ def delete_object(object_id: int, user_id: int = Depends(current_user)):
 
 
 #Update object : TABlE object
-@app.put("/update/{object_id}", tags=["Data Owner"], dependencies=[Depends(check_data_owner)])
-def update_object(object_id: int, object_name: str, show: bool, process: bool, forward: bool):
+@app.put("/update/{object_id}", tags=["Data Owner"])
+def update_object(object_id: int, object_name: str, show: bool, process: bool, forward: bool, expire: int, user_id: int = Depends(check_data_owner)):
     session = connect_db()
     obj = session.query(Object).filter(Object.object_id == object_id).first()
+    if obj.owner_id != user_id:
+        session.close()
+        raise HTTPException(status_code=400, detail="You are not authorized to update this opject")
     if obj:
         obj.object_name = object_name
         obj.show = show
         obj.process = process
         obj.forward = forward
+        obj.expire = expire
         session.commit()
         return {"Object updated success!!"}
     else:
         session.close()
-        return {"error": "Object not found"}
+        raise HTTPException(status_code=400, detail="Object not found")
 
 #register : TABLE user_account
 @app.post("/register", tags=["Users"])
@@ -226,7 +230,7 @@ def consent_request(object_id: int, req_info: str, user_id: int = Depends(check_
         raise HTTPException(status_code=404, detail="Invalid consent method")
     existing_request = session.query(Consent_request).filter(Consent_request.object_id == object_id, Consent_request.consumer_id == user_id).first()
     if existing_request:
-        raise HTTPException(status_code=400, detail="A consent request has been sent for this object")
+        raise HTTPException(status_code=400, detail="A consent request has been sent")
     end_user = session.query(UserAccount).filter(UserAccount.role_id == 1).all()
     for user in end_user:
         cs_req = Consent_request(request_date = req_date, request_info = req_info, object_id = obj.object_id, user_id = user.user_id, consumer_id = user_id)
