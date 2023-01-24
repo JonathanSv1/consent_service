@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Union
 from connect_database import connect_db
 
@@ -275,14 +275,14 @@ def check_consented(object_id: int):
     session = connect_db()
     cs_user = session.query(Consent_dataset).filter(Consent_dataset.object_id == object_id).all()
     obj = session.query(Object).filter(Object.object_id == object_id).first()
-    cs_per_req = session.query(Consent_request).filter(Consent_request.object_id == object_id).all()
     cs_list = []
     if cs_user:
         for day in cs_user:
             expire_day = obj.expire
             day.expire_date = day.consent_dataset_date + timedelta(days=expire_day)
-        for cs in cs_user:
-            cs_list.append({"object_id": cs.object_id, "object_name": obj.object_name, "user_id": cs.user_id, "consent_dataset_date": cs.consent_dataset_date, "expire_date": day.expire_date})
+            if day.expire_date < date.today():                
+                continue
+            cs_list.append({"object_id": day.object_id, "object_name": obj.object_name, "user_id": day.user_id, "consent_dataset_date": day.consent_dataset_date, "expire_date": day.expire_date})
         return cs_list
     else:
         raise HTTPException(status_code=404, detail="Object not found")
@@ -299,4 +299,10 @@ def list_consent_always():
         for user in end_users:
             obj_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "user_id":user.user_id})
     return obj_list
+
+
+
+
+
+
 
