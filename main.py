@@ -153,7 +153,7 @@ async def read_users_me(current_user: str = Depends(current_user)):
 
 
 # list object type "user"
-@app.get("/list_object/consent_method/user", tags=["Consent Dataset"])
+@app.get("/list_object/consent_method/user", tags=["End_user"])
 def list_objects(user_id: int = Depends(current_user)):
     session = connect_db()
     objects_user = session.query(Object).filter(Object.consent_method == "user").all()
@@ -161,7 +161,7 @@ def list_objects(user_id: int = Depends(current_user)):
 
 
 # Consent dataset
-@app.post("/consent_dataset", tags=["Consent Dataset"])
+@app.post("/consent_object_dataset", tags=["End_user"])
 def consent_dataset(object_id: int, user_id: int = Depends(current_user)):
     session = connect_db()
     cs_date = datetime.now()
@@ -183,7 +183,7 @@ def consent_dataset(object_id: int, user_id: int = Depends(current_user)):
 
 
 # List consent_dataset 
-@app.get("/list_consented", tags=["Consent Dataset"])
+@app.get("/list_user_consented", tags=["End_user"])
 def list_consented(user_id: int = Depends(current_user)):
     session = connect_db()
     consented = session.query(Consent_dataset).filter(Consent_dataset.user_id == user_id).all()
@@ -193,7 +193,7 @@ def list_consented(user_id: int = Depends(current_user)):
         raise HTTPException(status_code=404, detail="Consented not found")
 
 # revoke consent : update revoke_date
-@app.put("/revoke/{consent_dataset_id}", tags=["Consent Dataset"])
+@app.put("/revoke/{consent_dataset_id}", tags=["End_user"])
 def update_revoke_date(consent_dataset_id: int, user_id: int = Depends(current_user)):
     session = connect_db()
     consent = session.query(Consent_dataset).filter(Consent_dataset.consent_dataset_id == consent_dataset_id, Consent_dataset.user_id == user_id).first()
@@ -273,11 +273,30 @@ def consent_response(request_id: int,response: bool, user_id: int = Depends(chec
 @app.get("/check_consented")
 def check_consented(object_id: int):
     session = connect_db()
-    consented = session.query(Consent_dataset).filter(Consent_dataset.object_id == object_id).all()
-    if consented:
-        return consented
-    obj = session.query(Object).filter(Object.object_id == object_id, Object.consent_method == "always").first()
-    if obj:
-        return obj
+    cs_user = session.query(Consent_dataset).filter(Consent_dataset.object_id == object_id).all()
+    obj = session.query(Object).filter(Object.object_id == object_id).first()
+    cs_per_req = session.query(Consent_request).filter(Consent_request.object_id == object_id).all()
+    cs_list = []
+    if cs_user:
+        for day in cs_user:
+            expire_day = obj.expire
+            day.expire_date = day.consent_dataset_date + timedelta(days=expire_day)
+        for cs in cs_user:
+            cs_list.append({"object_id": cs.object_id, "object_name": obj.object_name, "user_id": cs.user_id, "consent_dataset_date": cs.consent_dataset_date, "expire_date": day.expire_date})
+        return cs_list
     else:
-        raise HTTPException(status_code=404, detail="This object has not received consent from the End_user.")
+        raise HTTPException(status_code=404, detail="Object not found")
+
+
+# list object type "always" + user_id ที่มี role "end_user"
+@app.get("/list_object/always")
+def list_consent_always():
+    session = connect_db()
+    objects = session.query(Object).filter(Object.consent_method == "always").all()
+    end_users = session.query(UserAccount).filter(UserAccount.role_id == 1).all()
+    obj_list = []
+    for obj in objects:
+        for user in end_users:
+            obj_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "user_id":user.user_id})
+    return obj_list
+
