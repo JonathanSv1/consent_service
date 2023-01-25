@@ -34,7 +34,6 @@ class Consent_dataset(Base):
     consent_dataset_date = Column(Date)
     user_id = Column(Integer, ForeignKey(UserAccount.user_id))
     object_id = Column(Integer, ForeignKey(Object.object_id))
-    expire = Column(Integer)
     revoke_date = Column(Date)
 
 class Consent_request(Base):
