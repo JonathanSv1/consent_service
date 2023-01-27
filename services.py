@@ -1,5 +1,7 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Date, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, Date, Boolean, JSON
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.dialects.postgresql import JSON
+
 
 Base = declarative_base()
 
@@ -21,7 +23,7 @@ class Object(Base):
     object_id = Column(Integer, primary_key=True)
     owner_id = Column(Integer, ForeignKey(UserAccount.user_id))
     object_name = Column(String)
-    object_field = Column(String)
+    object_field = Column(JSON)
     show = Column(Boolean)
     process = Column(Boolean)
     forward = Column(Boolean)

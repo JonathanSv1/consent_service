@@ -1,5 +1,5 @@
 from datetime import date, datetime, timedelta
-from typing import Union
+from typing import Union, Optional
 from connect_database import connect_db
 
 from fastapi import FastAPI, Depends, HTTPException, status
@@ -13,8 +13,6 @@ from services import Consent_dataset, Consent_request, Object, Roles, UserAccoun
 from enum import Enum
 from crud import  check_data_consumer, check_end_user, current_user, check_data_owner, decode_token, get_current_user
 from sqlalchemy.sql import and_
-
-
 
 
 session = connect_db()
@@ -46,6 +44,11 @@ class Check_object_method(str, Enum):
 class UserInDB(User):
     hashed_password: str
 
+# body parameter
+class obj_field(BaseModel):
+    name: Union[str, None] = None
+    description: Union[str, None] = None
+
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -68,10 +71,14 @@ def get_object():
     return object_list
 
 #Insert object : TABLE object
-@app.post("/insert_object/", tags=["Data Owner"],dependencies=[Depends(check_data_owner)])
-def insert_object(object_name: str, show: bool, process: bool, forward: bool, expire: int, consent_method: Consent_method, owner_id: int = Depends(current_user)):
+@app.post("/insert_object", tags=["Data Owner"])
+def insert_object(object_name: str, obj_field: obj_field, show:bool, process:bool, forward:bool, consent_method: Consent_method, expire: Optional[int] = None, owner_id: int = Depends(check_data_owner)):
     session = connect_db()
-    new_object = Object(object_name=object_name, owner_id = owner_id, show=show, process=process, forward=forward, expire=expire, consent_method=consent_method)
+    obj_field_dict = obj_field.dict()
+    if consent_method in ["user", "per_request"]:
+        if expire is None:
+            raise HTTPException(status_code=400, detail="Expire value is required for user and per_request consent methods")
+    new_object = Object(object_name=object_name, object_field = obj_field_dict, owner_id = owner_id, show=show, process=process, forward=forward, expire=expire, consent_method=consent_method)
     session.add(new_object)
     session.commit()
     session.close()
@@ -428,3 +435,7 @@ def list_insert(user_id: int = Depends(check_data_owner)):
         return list_obj
     else:
         raise HTTPException(status_code=404, detail="Object not found or not inserted by this user.")
+
+
+
+
