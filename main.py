@@ -20,11 +20,6 @@ from sqlalchemy.sql import and_
 session = connect_db()
 
 #
-class Role(int, Enum):
-    end_user = "1"
-    data_owner = "2"
-    data_consumer = "3"
-
 class Consent_method(str, Enum):
     always = "always"
     user = "user"
@@ -43,9 +38,10 @@ class User(BaseModel):
     role_id: int
 
 class Check_object_method(str, Enum):
+    show_all = "show all"
     consented = "consented"
     expired = "expired"
-    revoke = "revoke"
+    revoke = "revoked"
 
 class UserInDB(User):
     hashed_password: str
@@ -206,6 +202,20 @@ def check_method(check_method: Check_object_method, user_id: int = Depends(check
     session = connect_db()
     consented = session.query(Consent_dataset).filter(Consent_dataset.user_id == user_id).all()
     consented_list = []
+    if check_method == "show all":
+        if consented:
+            for obj in consented:
+                objects = session.query(Object).filter(Object.object_id == obj.object_id).first()
+                expire_day = objects.expire
+                expire_date = obj.consent_dataset_date + timedelta(days=expire_day)
+                if expire_date < date.today():
+                    status = 'expired'
+                elif obj.revoke_date:
+                    status = 'revoked'
+                else:
+                    status = 'valid'
+                consented_list.append({"object_id":objects.object_id,"object_name": objects.object_name,"consent_dataset_id":obj.consent_dataset_id,"consent_dataset_date":obj.consent_dataset_date,"expire_date":expire_date,"status":status})
+            return consented_list
     if check_method == "consented":
         if consented:
             for obj in consented:
@@ -219,8 +229,10 @@ def check_method(check_method: Check_object_method, user_id: int = Depends(check
                 else:
                     status = 'valid'
                 consented_list.append({"object_id":objects.object_id,"object_name": objects.object_name,"consent_dataset_id":obj.consent_dataset_id,"consent_dataset_date":obj.consent_dataset_date,"expire_date":expire_date,"status":status})
+        if not consented_list:
+            raise HTTPException(status_code=404,detail="No consented data found")
+        else:            
             return consented_list
-
     if check_method == "expired":
         if consented:
             for obj in consented:
@@ -233,23 +245,24 @@ def check_method(check_method: Check_object_method, user_id: int = Depends(check
                     status = 'expired'
                     consented_list.append({"object_id":objects.object_id,"object_name": objects.object_name,"consent_dataset_id":obj.consent_dataset_id,"consent_dataset_date":obj.consent_dataset_date,"expire_date":expire_date,"status":status})
         if not consented_list:
-            raise HTTPException(status_code=404,detail="No expired consented data found for this user")
+            raise HTTPException(status_code=404,detail="No expired consented data found")
         else:
             return consented_list
-
-    if check_method == "revoke":
+    if check_method == "revoked":
         if consented:
             for obj in consented:
                 if obj.revoke_date is None:
                     continue
+                else:
+                    status = 'revoked'
                 objects = session.query(Object).filter(Object.object_id == obj.object_id).first()
-                consented_list.append({"object_id":objects.object_id,"object_name": objects.object_name,"consent_dataset_id":obj.consent_dataset_id,"consent_dataset_date":obj.consent_dataset_date,"revoke_date":obj.revoke_date})
+                consented_list.append({"object_id":objects.object_id,"object_name": objects.object_name,"consent_dataset_id":obj.consent_dataset_id,"consent_dataset_date":obj.consent_dataset_date,"revoke_date":obj.revoke_date, "status":status})
         if not consented_list:
-            raise HTTPException(status_code=404,detail="No revoked consented data found for this user")
+            raise HTTPException(status_code=404,detail="No revoked consented data found")
         else:
             return consented_list
     else:
-        raise HTTPException(status_code=404,detail="No consented data found for this user")
+        raise HTTPException(status_code=404,detail="No consented data found")
 
       
 # revoke consent : update revoke_date
@@ -379,3 +392,39 @@ def check_response():
             continue
         res_list.append({"request_id":res.request_id, "object_id":res.object_id, "object_name":obj.object_name, "user_id":res.user_id, "response":res.response, "response_date":res.response_date,"expire":obj.expire, "expire_date":expire_date})
     return res_list
+
+# update consent เผื่อเวลาที่ object ที่เคยให้ไปหมดอายุ และยกเลิก revoked consent 
+@app.put("/consent/update/{consent_dataset_id}", tags=["End user"])
+def update_consent(consent_dataset_id: int, user_id: int = Depends(check_end_user)):
+    session = connect_db()
+    consent = session.query(Consent_dataset).filter(Consent_dataset.consent_dataset_id == consent_dataset_id, Consent_dataset.user_id == user_id).first()
+    if consent is None:
+        raise HTTPException(status_code=404, detail="Consent not found or not consented by this user.")
+    consent.consent_dataset_date = datetime.now()
+    consent.revoke_date = None
+    session.commit()
+    session.close()
+    return {"Consent has been updated."}
+
+
+# API object list ที่ Owner เพิ่ม
+@app.get("/list_object/inserted", tags=["Data Owner"])
+def list_insert(user_id: int = Depends(check_data_owner)):
+    session = connect_db()
+    obj = session.query(Object).filter(and_(Object.object_id == Object.object_id, Object.owner_id == user_id)).order_by(Object.object_id).all()
+    list_obj = []
+    if obj:
+        for o in obj:
+            list_obj.append(
+                {"object_id": o.object_id,
+                 "object_name":o.object_name, 
+                 "owner_id": o.owner_id,
+                 "object_field": o.object_field, 
+                 "show": o.show, 
+                 "process": o.process, 
+                 "forward": o.forward, 
+                 "expire": o.expire, 
+                 "consent_method": o.consent_method})
+        return list_obj
+    else:
+        raise HTTPException(status_code=404, detail="Object not found or not inserted by this user.")

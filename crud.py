@@ -82,4 +82,3 @@ def check_data_consumer(token: str = Depends(get_current_user)):
         )
     else:
         return user.user_id
-
