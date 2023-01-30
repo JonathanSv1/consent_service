@@ -63,7 +63,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 @app.get("/list_all_object", tags=["Data Consumer"])
 def get_object():
     session = connect_db()
-    objects = session.query(Object).all()
+    objects = session.query(Object).order_by(Object.object_id).all()
     object_list = []
     for obj in objects:
         object_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "show": obj.show, "process": obj.process, "forward": obj.forward, "expire": obj.expire, "consent_method": obj.consent_method})
@@ -350,56 +350,6 @@ def consent_response(request_id: int,response: bool, user_id: int = Depends(chec
         raise HTTPException(status_code=404, detail="Consent request not found")
 
 
-
-# จากตาราง consent_dataset 
-@app.get("/check_consent/consent_method/user", tags=["Data Consumer"])
-def check_consent(object_id: int):
-    session = connect_db()
-    cs_user = session.query(Consent_dataset).filter(Consent_dataset.object_id == object_id).all()
-    obj = session.query(Object).filter(Object.object_id == object_id).first()
-    cs_list = []
-    if cs_user:
-        for day in cs_user:
-            expire_day = obj.expire
-            day.expire_date = day.consent_dataset_date + timedelta(days=expire_day)
-            if day.expire_date < date.today():                
-                continue
-            cs_list.append({"object_id": day.object_id, "object_name": obj.object_name, "user_id": day.user_id, "consent_dataset_date": day.consent_dataset_date, "expire_date": day.expire_date})
-        return cs_list
-    else:
-        raise HTTPException(status_code=404, detail="Object not found")
-
-
-# list object type "always" + user_id ที่มี role "end_user"
-@app.get("/check_consent/consent_method/always", tags=["Data Consumer"])
-def check_consent_always():
-    session = connect_db()
-    objects = session.query(Object).filter(Object.consent_method == "always").all()
-    end_users = session.query(UserAccount).filter(UserAccount.role_id == 1).all()
-    obj_list = []
-    for obj in objects:
-        for user in end_users:
-            obj_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "user_id":user.user_id})
-    return obj_list
-
-
-#list consent response เฉพาะที่เป็น "True" และเช็ค expire
-@app.get("/check_consent/response", tags=["Data Consumer"], dependencies=[Depends(check_data_consumer)])
-def check_response():
-    session = connect_db()
-    response = session.query(Consent_request).filter(Consent_request.response == True).all()
-    if not response:
-        raise HTTPException(status_code=404, detail="No consent response found")
-    res_list = []
-    for res in response:
-        obj = session.query(Object).filter(Object.object_id == res.object_id).first()
-        expire_day = obj.expire
-        expire_date = res.response_date + timedelta(days=expire_day)
-        if expire_date < date.today():
-            continue
-        res_list.append({"request_id":res.request_id, "object_id":res.object_id, "object_name":obj.object_name, "user_id":res.user_id, "response":res.response, "response_date":res.response_date,"expire":obj.expire, "expire_date":expire_date})
-    return res_list
-
 # update consent เผื่อเวลาที่ object ที่เคยให้ไปหมดอายุ และยกเลิก revoked consent 
 @app.put("/consent/update/{consent_dataset_id}", tags=["End user"])
 def update_consent(consent_dataset_id: int, user_id: int = Depends(check_end_user)):
@@ -436,6 +386,41 @@ def list_insert(user_id: int = Depends(check_data_owner)):
     else:
         raise HTTPException(status_code=404, detail="Object not found or not inserted by this user.")
 
+# test
 
+@app.get("/check_consented/{object_id}", tags=["Data Consumer"])
+def list_consented(object_id: int):
+    session = connect_db()
+    object = session.query(Object).filter(Object.object_id == object_id).first()
+    end_users = session.query(UserAccount).filter(UserAccount.role_id == 1).all()
+    obj_user = session.query(Consent_dataset).filter(Consent_dataset.object_id == object_id).all()
+    obj_req = session.query(Consent_request).filter(Consent_request.object_id == object_id).all()
+    cs_list = []
+    if object.consent_method == "always":
+        for user in end_users:
+            cs_list.append({"object_id": object.object_id, "object_name": object.object_name, "user_id": user.user_id, "user_name": user.name})
+        return {"total":len(cs_list), "consented_objects": cs_list}
 
+    elif obj_user:
+        for cs in obj_user:
+            if cs.revoke_date:
+                continue
+            expire_day = object.expire
+            expire_date = cs.consent_dataset_date + timedelta(days=expire_day)
+            if expire_date < date.today():
+                continue
+            users = session.query(UserAccount).filter(UserAccount.user_id == cs.user_id).first()
+            cs_list.append({"object_id": cs.object_id, "object_name": object.object_name, "user_id": cs.user_id,"user_name": users.name, "consent_dataset_date": cs.consent_dataset_date,"expire":object.expire, "expire_date": expire_date})
+        return {"total":len(cs_list), "consented_objects": cs_list}
 
+    elif obj_req:
+        for res in obj_req:
+            if res.response_date is not None:
+                expire_day = object.expire
+                expire_date = res.response_date + timedelta(days=expire_day)
+                users = session.query(UserAccount).filter(UserAccount.user_id == res.user_id).first()            
+                cs_list.append({"object_id":res.object_id, "object_name":object.object_name,"request_id":res.request_id, "user_id":res.user_id,"user_name": users.name, "response":res.response, "response_date":res.response_date,"expire":object.expire, "expire_date":expire_date})
+        return {"total":len(cs_list), "consented_objects": cs_list}
+
+    else:
+        raise HTTPException(status_code=404, detail="not found object.")
