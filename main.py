@@ -40,6 +40,7 @@ class Check_object_method(str, Enum):
     consented = "consented"
     expired = "expired"
     revoke = "revoked"
+    response = "response"
 
 class UserInDB(User):
     hashed_password: str
@@ -209,6 +210,8 @@ def check_method(check_method: Check_object_method, user_id: int = Depends(check
     session = connect_db()
     consented = session.query(Consent_dataset).filter(Consent_dataset.user_id == user_id).all()
     consented_list = []
+    responses = session.query(Consent_request).filter(Consent_request.user_id == user_id).all()
+    response_list = []    
     if check_method == "show all":
         if consented:
             for obj in consented:
@@ -222,6 +225,11 @@ def check_method(check_method: Check_object_method, user_id: int = Depends(check
                 else:
                     status = 'valid'
                 consented_list.append({"object_id":objects.object_id,"object_name": objects.object_name,"consent_dataset_id":obj.consent_dataset_id,"consent_dataset_date":obj.consent_dataset_date,"expire_date":expire_date,"status":status})
+            for res in responses:
+                if res.response is not None:
+                    obj = session.query(Object).filter(Object.object_id == res.object_id).first()
+                    if obj:
+                        consented_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "request_id": res.request_id, "response": res.response, "reseponse_date": res.response_date, "consumer_id": res.consumer_id})
             return consented_list
     if check_method == "consented":
         if consented:
@@ -268,6 +276,17 @@ def check_method(check_method: Check_object_method, user_id: int = Depends(check
             raise HTTPException(status_code=404,detail="No revoked consented data found")
         else:
             return consented_list
+    if check_method == "response":
+        if responses:
+            for res in responses:
+                if res.response is not None:
+                    obj = session.query(Object).filter(Object.object_id == res.object_id).first()
+                    if obj:
+                        consented_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "request_id": res.request_id, "response": res.response, "reseponse_date": res.response_date, "consumer_id": res.consumer_id})
+            if not consented_list:
+                raise HTTPException(status_code=404, detail="No consent reseponse found.")
+            else:
+                return consented_list
     else:
         raise HTTPException(status_code=404,detail="No consented data found")
 
@@ -308,16 +327,17 @@ def consent_request(object_id: int, req_info: str, user_id: int = Depends(check_
         raise HTTPException(status_code=404, detail="Object not found")
     if obj.consent_method != "per_request":
         raise HTTPException(status_code=404, detail="Invalid consent method")
-    existing_request = session.query(Consent_request).filter(Consent_request.object_id == object_id, Consent_request.consumer_id == user_id).first()
-    if existing_request:
-        raise HTTPException(status_code=400, detail="A consent request has been sent")
-    end_user = session.query(UserAccount).filter(UserAccount.role_id == 1).all()
-    for user in end_user:
+    end_users = session.query(UserAccount).filter(UserAccount.role_id == 1).all()
+    posted_user_ids = [cs_req.user_id for cs_req in session.query(Consent_request).filter(Consent_request.object_id == object_id, Consent_request.consumer_id == user_id).all()]
+    for user in end_users:
+        if user.user_id in posted_user_ids:
+            continue
         cs_req = Consent_request(request_date = req_date, request_info = req_info, object_id = obj.object_id, user_id = user.user_id, consumer_id = user_id)
         session.add(cs_req)
     session.commit()
     session.close()
     return {"A consent request has been sent to the End_User"}
+
 
 
 # list consent request
@@ -389,12 +409,12 @@ def list_insert(user_id: int = Depends(check_data_owner)):
 # test
 
 @app.get("/check_consented/{object_id}", tags=["Data Consumer"])
-def list_consented(object_id: int):
+def list_consented(object_id: int, user_id: int = Depends(check_data_consumer)):
     session = connect_db()
     object = session.query(Object).filter(Object.object_id == object_id).first()
     end_users = session.query(UserAccount).filter(UserAccount.role_id == 1).all()
     obj_user = session.query(Consent_dataset).filter(Consent_dataset.object_id == object_id).all()
-    obj_req = session.query(Consent_request).filter(Consent_request.object_id == object_id).all()
+    obj_req = session.query(Consent_request).filter(Consent_request.object_id == object_id, Consent_request.consumer_id == user_id).all()
     cs_list = []
     if object.consent_method == "always":
         for user in end_users:
@@ -419,8 +439,12 @@ def list_consented(object_id: int):
                 expire_day = object.expire
                 expire_date = res.response_date + timedelta(days=expire_day)
                 users = session.query(UserAccount).filter(UserAccount.user_id == res.user_id).first()            
-                cs_list.append({"object_id":res.object_id, "object_name":object.object_name,"request_id":res.request_id, "user_id":res.user_id,"user_name": users.name, "response":res.response, "response_date":res.response_date,"expire":object.expire, "expire_date":expire_date})
+                cs_list.append({"object_id":res.object_id, "object_name":object.object_name,"request_id":res.request_id, "user_id":res.user_id,"user_name": users.name, "response":res.response, "response_date":res.response_date,"expire":object.expire, "expire_date":expire_date, "consumer_id":res.consumer_id})
         return {"total":len(cs_list), "consented_objects": cs_list}
 
     else:
         raise HTTPException(status_code=404, detail="not found object.")
+
+
+
+
