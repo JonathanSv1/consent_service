@@ -108,18 +108,24 @@ def delete_object(object_id: int, user_id: int = Depends(current_user)):
 
 #Update object : TABlE object
 @app.put("/update/{object_id}", tags=["Data Owner"])
-def update_object(object_id: int, object_name: str, show: bool, process: bool, forward: bool, expire: int, user_id: int = Depends(check_data_owner)):
+def update_object(object_id: int, object_name: str, obj_field: obj_field, show: bool, process: bool, forward: bool, consent_method: Consent_method,expire: Optional[int] = None, user_id: int = Depends(check_data_owner)):
     session = connect_db()
     obj = session.query(Object).filter(Object.object_id == object_id).first()
     if obj.owner_id != user_id:
         session.close()
         raise HTTPException(status_code=400, detail="You are not authorized to update this opject")
     if obj:
+        if consent_method in ["user", "per_request"]:
+            if expire is None:
+                raise HTTPException(status_code=400, detail="Expire value is required for user and per_request consent methods")
+        obj_field_dict = obj_field.dict()
         obj.object_name = object_name
+        obj.object_field = obj_field_dict
         obj.show = show
         obj.process = process
         obj.forward = forward
         obj.expire = expire
+        obj.consent_method=consent_method
         session.commit()
         return {"Object updated success!!"}
     else:
@@ -443,7 +449,7 @@ def list_consented(object_id: int, user_id: int = Depends(check_data_consumer)):
     if object.consent_method == "always":
         for user in end_users:
             cs_list.append({"object_id": object.object_id, "object_name": object.object_name, "user_id": user.user_id, "user_name": user.name})
-        return {"total":len(cs_list), "consented_objects": cs_list}
+        return {"total_user":len(cs_list), "consented_objects": cs_list}
 
     elif obj_user:
         for cs in obj_user:
@@ -455,7 +461,7 @@ def list_consented(object_id: int, user_id: int = Depends(check_data_consumer)):
                 continue
             users = session.query(UserAccount).filter(UserAccount.user_id == cs.user_id).first()
             cs_list.append({"object_id": cs.object_id, "object_name": object.object_name, "user_id": cs.user_id,"user_name": users.name, "consent_dataset_date": cs.consent_dataset_date,"expire":object.expire, "expire_date": expire_date})
-        return {"total":len(cs_list), "consented_objects": cs_list}
+        return {"total_user":len(cs_list), "consented_objects": cs_list}
 
     elif obj_req:
         for res in obj_req:
@@ -466,8 +472,11 @@ def list_consented(object_id: int, user_id: int = Depends(check_data_consumer)):
                     continue
                 users = session.query(UserAccount).filter(UserAccount.user_id == res.user_id).first()            
                 cs_list.append({"object_id":res.object_id, "object_name":object.object_name,"request_id":res.request_id, "user_id":res.user_id,"user_name": users.name, "response":res.response, "response_date":res.response_date,"expire":object.expire, "expire_date":expire_date, "consumer_id":res.consumer_id})
-        return {"total":len(cs_list), "consented_objects": cs_list}
-
+        return {"total_user":len(cs_list), "consented_objects": cs_list}
+    if object.consent_method == "always":
+        for user in end_users:
+            cs_list.append({"object_id": object.object_id, "object_name": object.object_name, "user_id": user.user_id, "user_name": user.name})
+        return {"total_user":len(cs_list), "consented_objects": cs_list}
     else:
         raise HTTPException(status_code=404, detail="not found object.")
 
