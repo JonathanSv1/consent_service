@@ -42,6 +42,10 @@ class Check_object_method(str, Enum):
     revoke = "revoked"
     response = "response"
 
+class Check_response(str, Enum):
+    response = "response"
+    expired = "expired"
+
 class UserInDB(User):
     hashed_password: str
 
@@ -468,5 +472,58 @@ def list_consented(object_id: int, user_id: int = Depends(check_data_consumer)):
         raise HTTPException(status_code=404, detail="not found object.")
 
 
+# check reponse expire ของ consumer
+@app.get("/check_response/expire", tags=["Data Consumer"])
+def check_response(check_method: Check_response, user_id: int = Depends(check_data_consumer)):
+    session = connect_db()
+    responses = session.query(Consent_request).filter(Consent_request.consumer_id == user_id).all()
+    response_list = []
+    if check_method == "response":
+        if responses:
+            for res in responses:
+                if res.response is not None:
+                    obj = session.query(Object).filter(Object.object_id == res.object_id).first()
+                    if obj:
+                        expire_date = res.response_date + timedelta(days=obj.expire)
+                        if expire_date < date.today():
+                            continue
+                        else:
+                            status = "valid"
+                        user = session.query(UserAccount).filter(UserAccount.user_id == res.user_id).first()
+                        response_list.append({"object_id": obj.object_id, "object_name": obj.object_name,"user_id": res.user_id,"user_name":user.name, "request_id": res.request_id, "response": res.response, "response_date": res.response_date, "expire_date": expire_date, "status": status, "consumer_id": res.consumer_id})
+            if not response_list:
+                raise HTTPException(status_code=404, detail="No consent response found.")
+            else:
+                return response_list
+    elif check_method == "expired":
+        for res in responses:
+            if res.response is not None:
+                obj = session.query(Object).filter(Object.object_id == res.object_id).first()
+                if obj:
+                    expire_day = obj.expire
+                    expire_date = res.response_date + timedelta(days=expire_day)
+                    if expire_date < date.today():
+                        status = 'expired'
+                        user = session.query(UserAccount).filter(UserAccount.user_id == res.user_id).first()
+                        response_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "user_id":res.user_id, "user_name":user.name, "request_id": res.request_id, "response": res.response, "reseponse_date": res.response_date, "expire_date": expire_date, "status": status,"consumer_id": res.consumer_id})
+        if not response_list:
+            raise HTTPException(status_code=404, detail="No expired consent response found.")
+        else:
+            return response_list
 
+
+# update request ของ consumer กรณีที่ response expired
+@app.put("/update_request/{request_id}", tags=["Data Consumer"])
+def update_request(request_id: int, user_id: int = Depends(check_data_consumer)):
+    session = connect_db()
+    request = session.query(Consent_request).filter(Consent_request.request_id == request_id, Consent_request.consumer_id == user_id).first()
+    if request is None:
+        raise HTTPException(status_code=404, detail="Object not found")
+    if request.request_date is not None:
+        request.request_date = datetime.now()
+        request.response = None
+        request.response_date = None
+        session.commit()
+        session.close()
+        return {"request has been update"}
 
