@@ -228,8 +228,14 @@ def check_method(check_method: Check_object_method, user_id: int = Depends(check
             for res in responses:
                 if res.response is not None:
                     obj = session.query(Object).filter(Object.object_id == res.object_id).first()
+                    expire_day = obj.expire
+                    expire_date = res.response_date + timedelta(days=expire_day)
+                    if expire_date < date.today():
+                        status = 'expired'
+                    else:
+                        status = 'valid'
                     if obj:
-                        consented_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "request_id": res.request_id, "response": res.response, "reseponse_date": res.response_date, "consumer_id": res.consumer_id})
+                        consented_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "request_id": res.request_id, "response": res.response, "reseponse_date": res.response_date, "expire_date":expire_date, "status":status,"consumer_id": res.consumer_id})
             return consented_list
     if check_method == "consented":
         if consented:
@@ -259,6 +265,14 @@ def check_method(check_method: Check_object_method, user_id: int = Depends(check
                 if expire_date < date.today():
                     status = 'expired'
                     consented_list.append({"object_id":objects.object_id,"object_name": objects.object_name,"consent_dataset_id":obj.consent_dataset_id,"consent_dataset_date":obj.consent_dataset_date,"expire_date":expire_date,"status":status})
+            for res in responses:
+                if res.response is not None:
+                    obj = session.query(Object).filter(Object.object_id == res.object_id).first()
+                    expire_day = obj.expire
+                    expire_date = res.response_date + timedelta(days=expire_day)
+                    if expire_date < date.today():
+                        status = 'expired'
+                        consented_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "request_id": res.request_id, "response": res.response, "reseponse_date": res.response_date, "expire_date":expire_date, "status":status,"consumer_id": res.consumer_id})
         if not consented_list:
             raise HTTPException(status_code=404,detail="No expired consented data found")
         else:
@@ -281,8 +295,14 @@ def check_method(check_method: Check_object_method, user_id: int = Depends(check
             for res in responses:
                 if res.response is not None:
                     obj = session.query(Object).filter(Object.object_id == res.object_id).first()
+                    expire_day = obj.expire
+                    expire_date = res.response_date + timedelta(days=expire_day)
+                    if expire_date < date.today():
+                        status = 'expired'
+                    else:
+                        status = 'valid'
                     if obj:
-                        consented_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "request_id": res.request_id, "response": res.response, "reseponse_date": res.response_date, "consumer_id": res.consumer_id})
+                        consented_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "request_id": res.request_id, "response": res.response, "reseponse_date": res.response_date, "expire_date":expire_date, "status":status,"consumer_id": res.consumer_id})
             if not consented_list:
                 raise HTTPException(status_code=404, detail="No consent reseponse found.")
             else:
@@ -438,6 +458,8 @@ def list_consented(object_id: int, user_id: int = Depends(check_data_consumer)):
             if res.response_date is not None:
                 expire_day = object.expire
                 expire_date = res.response_date + timedelta(days=expire_day)
+                if expire_date < date.today():
+                    continue
                 users = session.query(UserAccount).filter(UserAccount.user_id == res.user_id).first()            
                 cs_list.append({"object_id":res.object_id, "object_name":object.object_name,"request_id":res.request_id, "user_id":res.user_id,"user_name": users.name, "response":res.response, "response_date":res.response_date,"expire":object.expire, "expire_date":expire_date, "consumer_id":res.consumer_id})
         return {"total":len(cs_list), "consented_objects": cs_list}
