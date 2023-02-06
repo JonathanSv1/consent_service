@@ -48,3 +48,10 @@ class Consent_request(Base):
     response = Column(Boolean)
     response_date = Column(Date)
     consumer_id = Column(Integer, ForeignKey(UserAccount.user_id))
+
+class Element(Base):
+    __tablename__ = 'object_element'
+    element_id = Column(Integer, primary_key=True)
+    name = Column(String)
+    object_id = Column(Integer, ForeignKey(Object.object_id))
+    owner_id = Column(Integer, ForeignKey(UserAccount.user_id))

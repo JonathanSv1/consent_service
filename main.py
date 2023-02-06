@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from login import create_access_token, SECRET_KEY, ALGORITHM
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from services import Consent_dataset, Consent_request, Object, Roles, UserAccount
+from services import Consent_dataset, Consent_request, Element, Object, Roles, UserAccount
 from enum import Enum
 from crud import  check_data_consumer, check_end_user, current_user, check_data_owner, decode_token, get_current_user
 from sqlalchemy.sql import and_
@@ -552,3 +552,161 @@ def update_request(request_id: int, user_id: int = Depends(check_data_consumer))
         session.close()
         return {"request has been update"}
 
+# inset object
+@app.post("/insert", description="เพิ่ม object ของ Owner")
+def insert_object(object_name: str, show:bool, process:bool, forward:bool, consent_method: Consent_method, expire: Optional[int] = None, owner_id: int = Depends(check_data_owner)):
+    session = connect_db()
+    if consent_method in ["user", "per_request"]:
+        if expire is None:
+            raise HTTPException(status_code=400, detail="Expire value is required for user and per_request consent methods")
+    new_object = Object(object_name=object_name, owner_id = owner_id, show=show, process=process, forward=forward, expire=expire, consent_method=consent_method)
+    session.add(new_object)
+    session.commit()
+    session.close()
+    return {"Object insert success!!"}
+
+# update object
+@app.put("/update_eee/{object_id}")
+def update_object(object_id: int, object_name: str, show: bool, process: bool, forward: bool, consent_method: Consent_method,expire: Optional[int] = None, user_id: int = Depends(check_data_owner)):
+    session = connect_db()
+    obj = session.query(Object).filter(Object.object_id == object_id).first()
+    if obj.owner_id != user_id:
+        session.close()
+        raise HTTPException(status_code=400, detail="You are not authorized to update this opject")
+    if obj:
+        if consent_method in ["user", "per_request"]:
+            if expire is None:
+                raise HTTPException(status_code=400, detail="Expire value is required for user and per_request consent methods")
+        elif consent_method in ["always"]:
+            expire = None
+        obj.object_name = object_name
+        obj.show = show
+        obj.process = process
+        obj.forward = forward
+        obj.expire = expire
+        obj.consent_method=consent_method
+        session.commit()
+        return {"update object success."}
+    else:
+        session.close()
+        raise HTTPException(status_code=400, detail="Object not found")
+
+# insert element
+@app.post("/insert/element", description="เพิ่ม object element ของ Owner")
+def insert_element(object_id: int,name: str, user_id: int = Depends(check_data_owner)):
+    session = connect_db()
+    object = session.query(Object).filter(Object.object_id == object_id, Object.owner_id == user_id).first()
+    if object is not None:
+        new_element = Element(name = name, object_id = object_id, owner_id = user_id)
+        session.add(new_element)
+        session.commit()
+        session.close()
+        return {"insert object element success."}
+    else:
+        raise HTTPException(status_code=404, detail="Object not found or not inserted by this user.")
+    
+# update element
+@app.put("/update/element/{element_id}", description="แก้ไข object element ของ Owner")
+def update_element(element_id: int, name: str, user_id: int = Depends(check_data_owner)):
+    session = connect_db()
+    element = session.query(Element).filter(Element.element_id == element_id).first()
+    if element is None:
+        raise HTTPException(status_code=404, detail="Element not found.")
+    if element.owner_id != user_id:
+        session.close()
+        raise HTTPException(status_code=400, detail="You are not authorized to update this element")
+    element.name = name
+    session.commit()
+    return {"Element updated successfully."}
+
+
+@app.get("/get_object/none_element", description="list object ที่ยังไม่มี element ของ data owner")
+def get_object(user_id: int = Depends(check_data_owner)):
+    session = connect_db()
+    objects = session.query(Object).filter(Object.owner_id == user_id).all()
+    obj_list = []
+    if objects:
+        for obj in objects:
+            elements = session.query(Element).filter(Element.object_id == obj.object_id).all()
+            if not elements:
+                obj_list.append({"object_id":obj.object_id, 
+                                 "object_name": obj.object_name, 
+                                 "show": obj.show,
+                                 "process": obj.process,
+                                 "forward": obj.forward,
+                                 "expire": obj.expire,
+                                 "consent_method": obj.consent_method})
+        if not obj_list:
+            raise HTTPException(status_code=404, detail="object not found.")
+        else:
+            return obj_list
+    else:
+        raise HTTPException(status_code=404, detail="object not found.")
+
+@app.get("/get_object/element", description="list เฉพาะ object ที่มีการเพิ่ม element แล้ว ของ data owner")
+def get_object(user_id: int = Depends(check_data_owner)):
+    session = connect_db()
+    objects = session.query(Object).filter(Object.owner_id == user_id).all()
+    obj_list = []
+    if objects:
+        for obj in objects:
+            elements = session.query(Element).filter(Element.object_id == obj.object_id).all()
+            ele_list = []
+            if elements:
+                for ele in elements:     
+                    ele_list.append({"element_id": ele.element_id, "name": ele.name})
+                obj_list.append({
+                    "object_id": obj.object_id,
+                    "object_name": obj.object_name,
+                    "object_field": ele_list,
+                    "show": obj.show,
+                    "process": obj.process,
+                    "forward": obj.forward,
+                    "expire": obj.expire,
+                    "consent_method": obj.consent_method})
+        if not obj_list:
+            raise HTTPException(status_code=404, detail="object not found.")
+        else:
+            return obj_list
+    else:
+        raise HTTPException(status_code=404, detail="object not found.")
+
+@app.delete("/delete/element/{element_id}", description="ลบ element ที่ owner เพิ่ม")
+def delete_object(element_id: int, user_id: int = Depends(current_user)):
+    session = connect_db()
+    element = session.query(Element).filter(Element.element_id == element_id).first()
+    if element and element.owner_id == user_id:
+        session.delete(element)
+        session.commit()
+        return {"Element deleted successfully."}
+    if element and element.owner_id != user_id:
+        session.close()
+        raise HTTPException(status_code=400, detail="You are not authorized to delete this element.")
+    else:
+        session.close()
+        raise HTTPException(status_code=400, detail="Element not found.")
+
+
+
+
+
+
+@app.get("/list_object/type_user", description="list object ที่ยังไม่ไดให้ consent ของ end user")
+def list_objects(user_id: int = Depends(check_end_user)):
+    session = connect_db()
+    objects_user = session.query(Object).filter(Object.consent_method == "user").all()
+    consented_objects = session.query(Consent_dataset).filter(Consent_dataset.user_id == user_id).all()
+    non_consented_objects = []
+    for obj in objects_user:
+        found = False
+        for consented_obj in consented_objects:
+            if obj.object_id == consented_obj.object_id:
+                found = True
+                break
+        if not found:
+            non_consented_objects.append({"object_id": obj.object_id, "object_name": obj.object_name, "show": obj.show, "process": obj.process, "forward": obj.forward})
+    if not non_consented_objects:
+        raise HTTPException(status_code=404, detail="not found object")
+        #return "no object"
+    else:
+        return non_consented_objects
