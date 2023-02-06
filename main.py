@@ -23,6 +23,10 @@ class Consent_method(str, Enum):
     user = "user"
     per_req = "per_request"
 
+class list_element(str, Enum):
+    none_element = "none element"
+    element = "element"
+
 class Roles_method(str, Enum):
     end_user = "end_user"
     data_owner = "data_owner"
@@ -619,43 +623,39 @@ def update_element(element_id: int, name: str, user_id: int = Depends(check_data
     session.commit()
     return {"Element updated successfully."}
 
-
-@app.get("/get_object/none_element", description="list object ที่ยังไม่มี element ของ data owner")
-def get_object(user_id: int = Depends(check_data_owner)):
+@app.get("/list_object/method", description="list object ที่ไม่มี element และที่มี element")
+def list_object(check_method: list_element, user_id:int = Depends(check_data_owner)):
     session = connect_db()
     objects = session.query(Object).filter(Object.owner_id == user_id).all()
     obj_list = []
-    if objects:
-        for obj in objects:
-            elements = session.query(Element).filter(Element.object_id == obj.object_id).all()
-            if not elements:
-                obj_list.append({"object_id":obj.object_id, 
+    if check_method == "none element":
+        if objects:
+            for obj in objects:
+                elements = session.query(Element).filter(Element.object_id == obj.object_id).all()
+                if not elements:
+                    obj_list.append({"object_id":obj.object_id, 
                                  "object_name": obj.object_name, 
                                  "show": obj.show,
                                  "process": obj.process,
                                  "forward": obj.forward,
                                  "expire": obj.expire,
                                  "consent_method": obj.consent_method})
-        if not obj_list:
-            raise HTTPException(status_code=404, detail="object not found.")
+            if not obj_list:
+                raise HTTPException(status_code=404, detail="object not found.")
+            else:
+                return obj_list
         else:
-            return obj_list
-    else:
-        raise HTTPException(status_code=404, detail="object not found.")
+            raise HTTPException(status_code=404, detail="object not found.")
 
-@app.get("/get_object/element", description="list เฉพาะ object ที่มีการเพิ่ม element แล้ว ของ data owner")
-def get_object(user_id: int = Depends(check_data_owner)):
-    session = connect_db()
-    objects = session.query(Object).filter(Object.owner_id == user_id).all()
-    obj_list = []
-    if objects:
-        for obj in objects:
-            elements = session.query(Element).filter(Element.object_id == obj.object_id).all()
-            ele_list = []
-            if elements:
-                for ele in elements:     
-                    ele_list.append({"element_id": ele.element_id, "name": ele.name})
-                obj_list.append({
+    elif check_method == "element":
+        if objects:
+            for obj in objects:
+                elements = session.query(Element).filter(Element.object_id == obj.object_id).all()
+                ele_list = []
+                if elements:
+                    for ele in elements:     
+                        ele_list.append({"element_id": ele.element_id, "name": ele.name})
+                    obj_list.append({
                     "object_id": obj.object_id,
                     "object_name": obj.object_name,
                     "object_field": ele_list,
@@ -664,12 +664,12 @@ def get_object(user_id: int = Depends(check_data_owner)):
                     "forward": obj.forward,
                     "expire": obj.expire,
                     "consent_method": obj.consent_method})
-        if not obj_list:
-            raise HTTPException(status_code=404, detail="object not found.")
+            if not obj_list:
+                raise HTTPException(status_code=404, detail="object not found.")
+            else:
+                return obj_list
         else:
-            return obj_list
-    else:
-        raise HTTPException(status_code=404, detail="object not found.")
+            raise HTTPException(status_code=404, detail="object not found.")
 
 @app.delete("/delete/element/{element_id}", description="ลบ element ที่ owner เพิ่ม")
 def delete_object(element_id: int, user_id: int = Depends(current_user)):
