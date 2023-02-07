@@ -23,7 +23,6 @@ class Object(Base):
     object_id = Column(Integer, primary_key=True)
     owner_id = Column(Integer, ForeignKey(UserAccount.user_id))
     object_name = Column(String)
-    object_field = Column(JSON)
     show = Column(Boolean)
     process = Column(Boolean)
     forward = Column(Boolean)
@@ -55,3 +54,9 @@ class Element(Base):
     name = Column(String)
     object_id = Column(Integer, ForeignKey(Object.object_id))
     owner_id = Column(Integer, ForeignKey(UserAccount.user_id))
+
+class Consent_element(Base):
+    __tablename__ = 'consent_element'
+    consent_element_id = Column(Integer, primary_key=True)
+    element_id = Column(Integer, ForeignKey(Element.element_id))
+    user_id = Column(Integer, ForeignKey(UserAccount.user_id))
