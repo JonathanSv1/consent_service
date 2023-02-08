@@ -60,3 +60,12 @@ class Consent_element(Base):
     consent_element_id = Column(Integer, primary_key=True)
     element_id = Column(Integer, ForeignKey(Element.element_id))
     user_id = Column(Integer, ForeignKey(UserAccount.user_id))
+
+class Element_request(Base):
+    __tablename__ = 'element_request'
+    req_element_id = Column(Integer, primary_key=True)
+    element_id = Column(Integer, ForeignKey(Element.element_id))
+    user_id = Column(Integer, ForeignKey(UserAccount.user_id))
+    response = Column(Boolean)
+    consumer_id = Column(Integer, ForeignKey(UserAccount.user_id))
+    req_consent_id = Column(Integer, ForeignKey(Consent_request.request_id))
