@@ -133,6 +133,149 @@ async def login_for_access_token(from_data: OAuth2PasswordRequestForm = Depends(
         )
 
 
+@app.get("/list/method/consumer", tags=["Data Consumer"])
+def list_object_consumer(check_method: List_object, user_id: int = Depends(check_data_consumer)):
+    session = connect_db()
+    if check_method == "all object":
+        objects = session.query(Object).order_by(Object.object_id).all()
+        object_list = []
+        for obj in objects:
+            elements = session.query(Element).filter(Element.object_id == obj.object_id).all()
+            ele_list = []
+            if elements:
+                for ele in elements:     
+                    ele_list.append({"element_id": ele.element_id, "name": ele.name})
+            object_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "show": obj.show, "process": obj.process, "forward": obj.forward, "expire": obj.expire, "consent_method": obj.consent_method, "object_field": ele_list})
+        session.close()
+        return object_list
+
+    if check_method == "per request":
+        objects = session.query(Object).filter(Object.consent_method == "per_request").all()
+        obj_list = []
+        for obj in objects:
+            elements = session.query(Element).filter(Element.object_id == obj.object_id).all()
+            ele_list = []
+            if elements:
+                for ele in elements:     
+                    ele_list.append({"element_id": ele.element_id, "name": ele.name})
+            obj_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "show": obj.show, "process": obj.process, "forward": obj.forward, "expire": obj.expire, "consent_method": obj.consent_method, "object_field": ele_list})
+        return obj_list
+
+    if check_method == "response":
+        responses = session.query(Consent_request).filter(Consent_request.consumer_id == user_id).all()
+        response_list = []
+        if responses:
+            for res in responses:
+                elements = session.query(Element).filter(Element.object_id == res.object_id).all()
+                ele_list = []
+                for ele in elements:
+                    element_request = session.query(Element_request).filter(Element_request.consumer_id == user_id, Element_request.element_id == ele.element_id, Element_request.user_id == res.user_id).all()
+                    for ele_req in element_request:
+                        if ele_req.response is None:
+                            continue
+                        ele_list.append({"element_id": ele.element_id, "name": ele.name, "response":ele_req.response})
+                if res.response is not None:
+                    obj = session.query(Object).filter(Object.object_id == res.object_id).first()
+                    if obj: 
+                        expire_date = res.response_date + timedelta(days=obj.expire)
+                        if expire_date < date.today():
+                            continue
+                        else:
+                            status = "valid"
+                        user = session.query(UserAccount).filter(UserAccount.user_id == res.user_id).first()
+                        response_list.append({"object_id": obj.object_id, "object_name": obj.object_name,"user_id": res.user_id,"user_name":user.name, "request_id": res.request_id, "response": res.response, "response_date": res.response_date, "expire_date": expire_date, "status": status, "consumer_id": res.consumer_id, "object_field":ele_list})
+        if not response_list:
+            raise HTTPException(status_code=404, detail="No consent response found.")
+        else:
+            return response_list
+            
+    elif check_method == "expired":
+        responses = session.query(Consent_request).filter(Consent_request.consumer_id == user_id).all()
+        response_list = []
+        for res in responses:
+            elements = session.query(Element).filter(Element.object_id == res.object_id).all()
+            ele_list = []
+            for ele in elements:
+                element_request = session.query(Element_request).filter(Element_request.consumer_id == user_id, Element_request.element_id == ele.element_id, Element_request.user_id == res.user_id).all()
+                for ele_req in element_request:
+                    if ele_req.response is None:
+                        continue
+                    ele_list.append({"element_id": ele.element_id, "name": ele.name, "response":ele_req.response})
+            if res.response is not None:
+                obj = session.query(Object).filter(Object.object_id == res.object_id).first()
+                if obj:
+                    expire_day = obj.expire
+                    expire_date = res.response_date + timedelta(days=expire_day)
+                    if expire_date < date.today():
+                        status = 'expired'
+                        user = session.query(UserAccount).filter(UserAccount.user_id == res.user_id).first()
+                        response_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "user_id":res.user_id, "user_name":user.name, "request_id": res.request_id, "response": res.response, "reseponse_date": res.response_date, "expire_date": expire_date, "status": status,"consumer_id": res.consumer_id, "object_field":ele_list})
+        if not response_list:
+            raise HTTPException(status_code=404, detail="No expired consent response found.")
+        else:
+            return response_list
+    else:
+        session.close()
+        raise HTTPException(status_code=400, detail="Invalid `check_method` parameter.")
+
+
+# API check object ที่ end_user ให้ consent และ response ของ data_consumer
+@app.get("/check/consent/id/{object_id}", tags=["Data Consumer"], description="เช็คว่ามี object ให้ consent บ้าง, โดย request: object_id")
+def list_consented(object_id: int, user_id: int = Depends(check_data_consumer)):
+    session = connect_db()
+    object = session.query(Object).filter(Object.object_id == object_id).first()
+    end_users = session.query(UserAccount).filter(UserAccount.role_id == 1).all()
+    obj_user = session.query(Consent_dataset).filter(Consent_dataset.object_id == object_id).all()
+    obj_req = session.query(Consent_request).filter(Consent_request.object_id == object_id, Consent_request.consumer_id == user_id).all()
+    cs_list = []
+    if object is None:
+        raise HTTPException(status_code=404, detail="Object not found.")
+
+    elif obj_user:
+        for cs in obj_user:
+            consented = session.query(Consent_dataset).filter(Consent_dataset.user_id == cs.user_id).all()
+            for obj in consented:
+                elements = session.query(Element).filter(Element.object_id == obj.object_id).all()
+                list_element = []
+                for ele in elements:
+                    if session.query(Consent_element).filter(Consent_element.user_id == cs.user_id, Consent_element.element_id == ele.element_id).first():
+                        list_element.append({"element_id": ele.element_id, "name": ele.name})
+            if cs.revoke_date:
+                continue
+            expire_day = object.expire
+            expire_date = cs.consent_dataset_date + timedelta(days=expire_day)
+            if expire_date < date.today():
+                continue
+            users = session.query(UserAccount).filter(UserAccount.user_id == cs.user_id).first()
+            cs_list.append({"object_id": cs.object_id, "object_name": object.object_name, "user_id": cs.user_id,"user_name": users.name, "consent_dataset_date": cs.consent_dataset_date,"expire":object.expire, "expire_date": expire_date, "object_field":list_element})
+        return {"total_user":len(cs_list), "consented_objects": cs_list}
+
+    elif obj_req:
+        for res in obj_req:
+            elements = session.query(Element).filter(Element.object_id == res.object_id).all()
+            ele_list = []
+            for ele in elements:
+                element_request = session.query(Element_request).filter(Element_request.consumer_id == user_id, Element_request.element_id == ele.element_id, Element_request.user_id == res.user_id).all()
+                for ele_req in element_request:
+                    if ele_req.response is None:
+                        continue
+                    ele_list.append({"element_id": ele.element_id, "name": ele.name, "response":ele_req.response})
+            if res.response_date is not None:
+                expire_day = object.expire
+                expire_date = res.response_date + timedelta(days=expire_day)
+                if expire_date < date.today():
+                    continue
+                users = session.query(UserAccount).filter(UserAccount.user_id == res.user_id).first()            
+                cs_list.append({"object_id":res.object_id, "object_name":object.object_name,"request_id":res.request_id, "user_id":res.user_id,"user_name": users.name, "response":res.response, "response_date":res.response_date,"expire":object.expire, "expire_date":expire_date, "consumer_id":res.consumer_id, "object_field":ele_list})
+        return {"total_user":len(cs_list), "consented_objects": cs_list}
+
+    elif object.consent_method == "always":
+        for user in end_users:
+            cs_list.append({"object_id": object.object_id, "object_name": object.object_name, "user_id": user.user_id, "user_name": user.name})
+        return {"total_user":len(cs_list), "consented_objects": cs_list}
+
+
+
 # consent request
 @app.post("/request/consent/object", tags=["Data Consumer"])
 def consent_request(object_id: int, req_info: str, user_id: int = Depends(check_data_consumer)):
@@ -155,52 +298,8 @@ def consent_request(object_id: int, req_info: str, user_id: int = Depends(check_
     return {"A consent request has been sent to the End_User"}
 
 
-# API check object ที่ end_user ให้ consent และ response ของ data_consumer
-@app.get("/check/consent/id/{object_id}", tags=["Data Consumer"], description="เช็คว่ามี object ให้ consent บ้าง, โดย request: object_id")
-def list_consented(object_id: int, user_id: int = Depends(check_data_consumer)):
-    session = connect_db()
-    object = session.query(Object).filter(Object.object_id == object_id).first()
-    end_users = session.query(UserAccount).filter(UserAccount.role_id == 1).all()
-    obj_user = session.query(Consent_dataset).filter(Consent_dataset.object_id == object_id).all()
-    obj_req = session.query(Consent_request).filter(Consent_request.object_id == object_id, Consent_request.consumer_id == user_id).all()
-    cs_list = []
-    if object.consent_method == "always":
-        for user in end_users:
-            cs_list.append({"object_id": object.object_id, "object_name": object.object_name, "user_id": user.user_id, "user_name": user.name})
-        return {"total_user":len(cs_list), "consented_objects": cs_list}
-
-    elif obj_user:
-        for cs in obj_user:
-            if cs.revoke_date:
-                continue
-            expire_day = object.expire
-            expire_date = cs.consent_dataset_date + timedelta(days=expire_day)
-            if expire_date < date.today():
-                continue
-            users = session.query(UserAccount).filter(UserAccount.user_id == cs.user_id).first()
-            cs_list.append({"object_id": cs.object_id, "object_name": object.object_name, "user_id": cs.user_id,"user_name": users.name, "consent_dataset_date": cs.consent_dataset_date,"expire":object.expire, "expire_date": expire_date})
-        return {"total_user":len(cs_list), "consented_objects": cs_list}
-
-    elif obj_req:
-        for res in obj_req:
-            if res.response_date is not None:
-                expire_day = object.expire
-                expire_date = res.response_date + timedelta(days=expire_day)
-                if expire_date < date.today():
-                    continue
-                users = session.query(UserAccount).filter(UserAccount.user_id == res.user_id).first()            
-                cs_list.append({"object_id":res.object_id, "object_name":object.object_name,"request_id":res.request_id, "user_id":res.user_id,"user_name": users.name, "response":res.response, "response_date":res.response_date,"expire":object.expire, "expire_date":expire_date, "consumer_id":res.consumer_id})
-        return {"total_user":len(cs_list), "consented_objects": cs_list}
-    elif object.consent_method == "always":
-        for user in end_users:
-            cs_list.append({"object_id": object.object_id, "object_name": object.object_name, "user_id": user.user_id, "user_name": user.name})
-        return {"total_user":len(cs_list), "consented_objects": cs_list}
-    else:
-        raise HTTPException(status_code=404, detail="not found object.")
-
-
 # update request ของ consumer กรณีที่ response expired
-@app.put("/update_request/{request_id}", tags=["Data Consumer"])
+@app.put("/update/object/request/{request_id}", tags=["Data Consumer"])
 def update_request(request_id: int, user_id: int = Depends(check_data_consumer)):
     session = connect_db()
     request = session.query(Consent_request).filter(Consent_request.request_id == request_id, Consent_request.consumer_id == user_id).first()
@@ -264,7 +363,7 @@ def list_object(check_method: list_element, user_id:int = Depends(check_data_own
             raise HTTPException(status_code=404, detail="object not found.")
 
 # inset object
-@app.post("/insert", tags=["Data Owner"], description="เพิ่ม object ของ Owner")
+@app.post("/insert/object", tags=["Data Owner"], description="เพิ่ม object ของ Owner")
 def insert_object(object_name: str, show:bool, process:bool, forward:bool, consent_method: Consent_method, expire: Optional[int] = None, owner_id: int = Depends(check_data_owner)):
     session = connect_db()
     if consent_method in ["user", "per_request"]:
@@ -302,6 +401,23 @@ def update_object(object_id: int, object_name: str, show: bool, process: bool, f
         session.close()
         raise HTTPException(status_code=400, detail="Object not found")
 
+
+@app.delete("/delete/object/{object_id}", tags=["Data Owner"])
+def delete_object(object_id: int, user_id: int = Depends(current_user)):
+    session = connect_db()
+    obj = session.query(Object).filter(Object.object_id == object_id).first()
+    if obj and obj.owner_id == user_id:
+        session.delete(obj)
+        session.commit()
+        return {"Object deleted success!!"}
+    if obj and obj.owner_id != user_id:
+        session.close()
+        raise HTTPException(status_code=400, detail="You are not authorized to delete this object")
+    else:
+        session.close()
+        raise HTTPException(status_code=400, detail="Object not found")
+
+
 # insert element
 @app.post("/insert/element", tags=["Data Owner"], description="เพิ่ม object element ของ Owner")
 def insert_element(object_id: int,name: str, user_id: int = Depends(check_data_owner)):
@@ -330,21 +446,6 @@ def update_element(element_id: int, name: str, user_id: int = Depends(check_data
     session.commit()
     return {"Element updated successfully."}
 
-
-@app.delete("/delete/object/{object_id}", tags=["Data Owner"])
-def delete_object(object_id: int, user_id: int = Depends(current_user)):
-    session = connect_db()
-    obj = session.query(Object).filter(Object.object_id == object_id).first()
-    if obj and obj.owner_id == user_id:
-        session.delete(obj)
-        session.commit()
-        return {"Object deleted success!!"}
-    if obj and obj.owner_id != user_id:
-        session.close()
-        raise HTTPException(status_code=400, detail="You are not authorized to delete this object")
-    else:
-        session.close()
-        raise HTTPException(status_code=400, detail="Object not found")
 
 @app.delete("/delete/element/{element_id}", tags=["Data Owner"], description="ลบ element ที่ owner เพิ่ม")
 def delete_object(element_id: int, user_id: int = Depends(current_user)):
@@ -573,7 +674,7 @@ def list_consented(check_method: Check_object_method, user_id: int = Depends(che
         raise HTTPException(status_code=404,detail="No consented data found")
 
 
-@app.post("/consent/object", tags=["End user"])
+@app.post("/consent/object/{object_id}", tags=["End user"])
 def consent_dataset(object_id: int, user_id: int = Depends(current_user)):
     session = connect_db()
     cs_date = datetime.now()
@@ -620,6 +721,18 @@ def consent_element(element_id: int, user_id: int = Depends(current_user)):
     return {"consented": element_name}
 
 
+@app.delete("/delete/element/user/{element_id}", tags=["End user"])
+def delete_element(element_id: int,user_id: int = Depends(check_end_user)):
+    session = connect_db()
+    consent = session.query(Consent_element).filter(Consent_element.user_id == user_id, Consent_element.element_id == element_id).first()
+    if consent:
+        session.delete(consent)
+        session.commit()
+        return {"Element has been deleted."}
+    else:
+        raise HTTPException(status_code=404, detail="Element not found.")
+
+
 # update consent เผื่อเวลาที่ object ที่เคยให้ไปหมดอายุ และยกเลิก revoked consent 
 @app.put("/update/consent/{consent_dataset_id}", tags=["End user"], description="update consent กรณีที่ object ที่เคยให้ไปหมดอายุ และยกเลิก revoked consent")
 def update_consent(consent_dataset_id: int, user_id: int = Depends(check_end_user)):
@@ -635,7 +748,7 @@ def update_consent(consent_dataset_id: int, user_id: int = Depends(check_end_use
 
 
 # revoke consent : update revoke_date
-@app.put("/revoke/{consent_dataset_id}", tags=["End user"])
+@app.put("/revoke/consent/{consent_dataset_id}", tags=["End user"])
 def update_revoke_date(consent_dataset_id: int, user_id: int = Depends(current_user)):
     session = connect_db()
     consent = session.query(Consent_dataset).filter(Consent_dataset.consent_dataset_id == consent_dataset_id, Consent_dataset.user_id == user_id).first()
@@ -650,22 +763,7 @@ def update_revoke_date(consent_dataset_id: int, user_id: int = Depends(current_u
         raise HTTPException(status_code=400, detail="This object has been revoked")
 
 
-@app.delete("/delete/user/element/{element_id}", tags=["End user"])
-def delete_element(element_id: int,user_id: int = Depends(check_end_user)):
-    session = connect_db()
-    consent = session.query(Consent_element).filter(Consent_element.user_id == user_id, Consent_element.element_id == element_id).first()
-    if consent:
-        session.delete(consent)
-        session.commit()
-        return {"Element has been deleted."}
-    else:
-        raise HTTPException(status_code=404, detail="Element not found.")
-
-
-
-    
-
-@app.put("/consent_response/{request_id}", tags=["End user"])
+@app.put("/consent/response/object/{request_id}", tags=["End user"])
 def consent_response(request_id: int,response: bool, user_id: int = Depends(check_end_user)):
     session = connect_db()
     res = session.query(Consent_request).filter(Consent_request.request_id == request_id).first()
@@ -700,84 +798,6 @@ def consent_response(req_element_id: int, response: bool, user_id: int = Depends
             raise HTTPException(status_code=400, detail="Consent element request has already been responded.")
         else:
             raise HTTPException(status_code=404, detail="Consent element request not found.")
-
-
-@app.get("/list/object/consumer", tags=["Data Consumer"])
-def list_object_consumer(check_method: List_object, user_id: int = Depends(check_data_consumer)):
-    session = connect_db()
-    if check_method == "all object":
-        objects = session.query(Object).order_by(Object.object_id).all()
-        object_list = []
-        for obj in objects:
-            elements = session.query(Element).filter(Element.object_id == obj.object_id).all()
-            ele_list = []
-            if elements:
-                for ele in elements:     
-                    ele_list.append({"element_id": ele.element_id, "name": ele.name})
-            object_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "show": obj.show, "process": obj.process, "forward": obj.forward, "expire": obj.expire, "consent_method": obj.consent_method, "object_field": ele_list})
-        session.close()
-        return object_list
-
-    if check_method == "per request":
-        objects = session.query(Object).filter(Object.consent_method == "per_request").all()
-        obj_list = []
-        for obj in objects:
-            elements = session.query(Element).filter(Element.object_id == obj.object_id).all()
-            ele_list = []
-            if elements:
-                for ele in elements:     
-                    ele_list.append({"element_id": ele.element_id, "name": ele.name})
-            obj_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "show": obj.show, "process": obj.process, "forward": obj.forward, "expire": obj.expire, "consent_method": obj.consent_method, "object_field": ele_list})
-        return obj_list
-
-    if check_method == "response":
-        responses = session.query(Consent_request).filter(Consent_request.consumer_id == user_id).all()
-        response_list = []
-        if responses:
-            for res in responses:
-                elements = session.query(Element).filter(Element.object_id == res.object_id).all()
-                ele_list = []
-                for ele in elements:
-                    element_request = session.query(Element_request).filter(Element_request.consumer_id == user_id, Element_request.element_id == ele.element_id, Element_request.user_id == res.user_id).all()
-                    for ele_req in element_request:
-                        if ele_req.response is None:
-                            continue
-                        ele_list.append({"element_id": ele.element_id, "name": ele.name, "response":ele_req.response})
-                if res.response is not None:
-                    obj = session.query(Object).filter(Object.object_id == res.object_id).first()
-                    if obj: 
-                        expire_date = res.response_date + timedelta(days=obj.expire)
-                        if expire_date < date.today():
-                            continue
-                        else:
-                            status = "valid"
-                        user = session.query(UserAccount).filter(UserAccount.user_id == res.user_id).first()
-                        response_list.append({"object_id": obj.object_id, "object_name": obj.object_name,"user_id": res.user_id,"user_name":user.name, "request_id": res.request_id, "response": res.response, "response_date": res.response_date, "expire_date": expire_date, "status": status, "consumer_id": res.consumer_id, "object_field":ele_list})
-        if not response_list:
-            raise HTTPException(status_code=404, detail="No consent response found.")
-        else:
-            return response_list
-            
-    elif check_method == "expired":
-        responses = session.query(Consent_request).filter(Consent_request.consumer_id == user_id).all()
-        response_list = []
-        for res in responses:
-            if res.response is not None:
-                obj = session.query(Object).filter(Object.object_id == res.object_id).first()
-                if obj:
-                    expire_day = obj.expire
-                    expire_date = res.response_date + timedelta(days=expire_day)
-                    if expire_date < date.today():
-                        status = 'expired'
-                        user = session.query(UserAccount).filter(UserAccount.user_id == res.user_id).first()
-                        response_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "user_id":res.user_id, "user_name":user.name, "request_id": res.request_id, "response": res.response, "reseponse_date": res.response_date, "expire_date": expire_date, "status": status,"consumer_id": res.consumer_id})
-        if not response_list:
-            raise HTTPException(status_code=404, detail="No expired consent response found.")
-        else:
-            return response_list
-    else:
-        session.close()
-        raise HTTPException(status_code=400, detail="Invalid `check_method` parameter.")
     
 
 @app.post("/request/consent/element/{element_id}", tags=["Data Consumer"])
