@@ -133,7 +133,11 @@ async def login_for_access_token(from_data: OAuth2PasswordRequestForm = Depends(
         )
 
 
-@app.get("/list/method/consumer", tags=["Data Consumer"])
+# All object คือ แสดง object และ element ทั้งหมด 
+# Per request คือ แสดงเฉพาะ object และ element ที่จะต้องขอ request ก่อนใช้งาน
+# Response คือ แสดง response ที่ end user ตอบกลับ request
+# Expired คือ แสดง response ที่หมดอายุ จะได้ขอ request ใหม่
+@app.get("/list/method/consumer", tags=["Data Consumer"], description="สำหรับให้ data consumer ใช้ดูข้อมูลต่าง ๆ")
 def list_object_consumer(check_method: List_object, user_id: int = Depends(check_data_consumer)):
     session = connect_db()
     if check_method == "all object":
@@ -220,7 +224,7 @@ def list_object_consumer(check_method: List_object, user_id: int = Depends(check
 
 
 # API check object ที่ end_user ให้ consent และ response ของ data_consumer
-@app.get("/check/consent/id/{object_id}", tags=["Data Consumer"], description="เช็คว่ามี object ให้ consent บ้าง, โดย request: object_id")
+@app.get("/check/consent/id/{object_id}", tags=["Data Consumer"], description="สำหรับให้ data consumer ดูว่าแต่ละ object มี user ไหน ให้ consent แล้วบ้าง")
 def list_consented(object_id: int, user_id: int = Depends(check_data_consumer)):
     session = connect_db()
     object = session.query(Object).filter(Object.object_id == object_id).first()
@@ -277,7 +281,7 @@ def list_consented(object_id: int, user_id: int = Depends(check_data_consumer)):
 
 
 # consent request
-@app.post("/request/consent/object", tags=["Data Consumer"])
+@app.post("/request/consent/object", tags=["Data Consumer"], description="สำหรับให้ data consumer ขอ request object: per_req")
 def consent_request(object_id: int, req_info: str, user_id: int = Depends(check_data_consumer)):
     session = connect_db()
     req_date = datetime.now()
@@ -299,7 +303,7 @@ def consent_request(object_id: int, req_info: str, user_id: int = Depends(check_
 
 
 # update request ของ consumer กรณีที่ response expired
-@app.put("/update/object/request/{request_id}", tags=["Data Consumer"])
+@app.put("/update/object/request/{request_id}", tags=["Data Consumer"], description="สำหรับให้ data consumer update request กรณีที่ response จาก end user นั้น expired ")
 def update_request(request_id: int, user_id: int = Depends(check_data_consumer)):
     session = connect_db()
     request = session.query(Consent_request).filter(Consent_request.request_id == request_id, Consent_request.consumer_id == user_id).first()
@@ -314,7 +318,7 @@ def update_request(request_id: int, user_id: int = Depends(check_data_consumer))
         return {"request has been update"}
 
 # list object
-@app.get("/list/method/owner", tags=["Data Owner"], description="list object ที่ไม่มี element และที่มี element")
+@app.get("/list/method/owner", tags=["Data Owner"], description="สำหรับให้ data owner ดูว่าเพิ่มข้อมูลอะไรไปแล้วบ้าง")
 def list_object(check_method: list_element, user_id:int = Depends(check_data_owner)):
     session = connect_db()
     objects = session.query(Object).filter(Object.owner_id == user_id).all()
@@ -363,7 +367,7 @@ def list_object(check_method: list_element, user_id:int = Depends(check_data_own
             raise HTTPException(status_code=404, detail="object not found.")
 
 # inset object
-@app.post("/insert/object", tags=["Data Owner"], description="เพิ่ม object ของ Owner")
+@app.post("/insert/object", tags=["Data Owner"], description="สำหรับให้ data owner ใช้เพิ่มข้อมูล (object)")
 def insert_object(object_name: str, show:bool, process:bool, forward:bool, consent_method: Consent_method, expire: Optional[int] = None, owner_id: int = Depends(check_data_owner)):
     session = connect_db()
     if consent_method in ["user", "per_request"]:
@@ -376,7 +380,7 @@ def insert_object(object_name: str, show:bool, process:bool, forward:bool, conse
     return {"Object insert success!!"}
 
 # update object
-@app.put("/update/object/{object_id}", tags=["Data Owner"])
+@app.put("/update/object/{object_id}", tags=["Data Owner"], description="สำหรับให้ data owner ใช้แก้ไขข้อมูลที่เคยเพิ่ม")
 def update_object(object_id: int, object_name: str, show: bool, process: bool, forward: bool, consent_method: Consent_method,expire: Optional[int] = None, user_id: int = Depends(check_data_owner)):
     session = connect_db()
     obj = session.query(Object).filter(Object.object_id == object_id).first()
@@ -402,7 +406,7 @@ def update_object(object_id: int, object_name: str, show: bool, process: bool, f
         raise HTTPException(status_code=400, detail="Object not found")
 
 
-@app.delete("/delete/object/{object_id}", tags=["Data Owner"])
+@app.delete("/delete/object/{object_id}", tags=["Data Owner"], description="สำหรับให้ data owner ใช้ลบข้อมูลที่เคยเพิ่ม")
 def delete_object(object_id: int, user_id: int = Depends(current_user)):
     session = connect_db()
     obj = session.query(Object).filter(Object.object_id == object_id).first()
@@ -419,7 +423,7 @@ def delete_object(object_id: int, user_id: int = Depends(current_user)):
 
 
 # insert element
-@app.post("/insert/element", tags=["Data Owner"], description="เพิ่ม object element ของ Owner")
+@app.post("/insert/element", tags=["Data Owner"], description="สำหรับให้ data owner ใช้เพิ่ม element ของ object")
 def insert_element(object_id: int,name: str, user_id: int = Depends(check_data_owner)):
     session = connect_db()
     object = session.query(Object).filter(Object.object_id == object_id, Object.owner_id == user_id).first()
@@ -433,7 +437,7 @@ def insert_element(object_id: int,name: str, user_id: int = Depends(check_data_o
         raise HTTPException(status_code=404, detail="Object not found or not inserted by this user.")
     
 # update element
-@app.put("/update/element/{element_id}", tags=["Data Owner"], description="แก้ไข object element ของ Owner")
+@app.put("/update/element/{element_id}", tags=["Data Owner"], description="สำหรับให้ data owner ใช้แก้ไข element ที่เคยเพิ่ม")
 def update_element(element_id: int, name: str, user_id: int = Depends(check_data_owner)):
     session = connect_db()
     element = session.query(Element).filter(Element.element_id == element_id).first()
@@ -447,7 +451,7 @@ def update_element(element_id: int, name: str, user_id: int = Depends(check_data
     return {"Element updated successfully."}
 
 
-@app.delete("/delete/element/{element_id}", tags=["Data Owner"], description="ลบ element ที่ owner เพิ่ม")
+@app.delete("/delete/element/{element_id}", tags=["Data Owner"], description="สำหรับให้ data owner ใช้ลบ element ที่เคยเพิ่ม")
 def delete_object(element_id: int, user_id: int = Depends(current_user)):
     session = connect_db()
     element = session.query(Element).filter(Element.element_id == element_id).first()
@@ -464,12 +468,15 @@ def delete_object(element_id: int, user_id: int = Depends(current_user)):
 
 
 
-# show all คือ list ทั้งหมด
-# waitig consent คือ list object ที่ user ยังไม่ได้ให้ consent
-# show element คือ list element ที่ user ยังไม่ได้ให้ consent
-# consented คือ list object ที่ user ให้ consent แล้ว
-# expired คือ list object ที่หมดอายุแล้ว
-@app.get("/list/method/user", tags=["End user"], description="list object และ element ที่ user ให้ consent , check expired")
+# Waiting consent object คือ แสดง object: user ที่ยังไม่ได้ให้ consent
+# Waiting consent element คือ แสดง element ของ object ที่ให้ consent ไป 
+# Consented คือ แสดง object และ element ที่ consent ไปแล้ว
+# Expired คือ แสดง object และ element ที่ expired
+# Revoked คือ แสดง object และ element ที่ end user ได้ revoke ไปแล้ว
+# Consent request คือ แสดง request ของ object ที่ data consumer ขอ request มา
+# Element request คือ แสดง request ของ element ที่ data consumer ของ request มา
+# Response คือ แสดง object และ element ที่ end user ได้ response กลับ
+@app.get("/list/method/user", tags=["End user"], description="สำหรับให้ end user ใช้ดูข้อมูลต่าง ๆ")
 def list_consented(check_method: Check_object_method, user_id: int = Depends(check_end_user)):
     session = connect_db()
     if check_method == "show all":
@@ -674,7 +681,7 @@ def list_consented(check_method: Check_object_method, user_id: int = Depends(che
         raise HTTPException(status_code=404,detail="No consented data found")
 
 
-@app.post("/consent/object/{object_id}", tags=["End user"])
+@app.post("/consent/object/{object_id}", tags=["End user"], description="สำหรับให้ end user ใช้ consent object: user")
 def consent_dataset(object_id: int, user_id: int = Depends(current_user)):
     session = connect_db()
     cs_date = datetime.now()
@@ -694,7 +701,7 @@ def consent_dataset(object_id: int, user_id: int = Depends(current_user)):
     return {"consented": obj_name}
 
 
-@app.post("/consent/element/{element_id}", tags=["End user"], description="user ให้ consent element ทีละอัน")
+@app.post("/consent/element/{element_id}", tags=["End user"], description="สำหรับให้ end user ใช่ consent element ของ object ที่ consent ไปแล้ว")
 def consent_element(element_id: int, user_id: int = Depends(current_user)):
     session = connect_db()
     elements = session.query(Element).filter(Element.element_id == element_id).first()
@@ -721,7 +728,7 @@ def consent_element(element_id: int, user_id: int = Depends(current_user)):
     return {"consented": element_name}
 
 
-@app.delete("/delete/element/user/{element_id}", tags=["End user"])
+@app.delete("/delete/element/user/{element_id}", tags=["End user"], description="สำหรับให้ end user ใช้ลบ element ที่เคยให้ consent ไป ในกรณีที่ต้องการยกเลิก consent element นั้น ๆ ")
 def delete_element(element_id: int,user_id: int = Depends(check_end_user)):
     session = connect_db()
     consent = session.query(Consent_element).filter(Consent_element.user_id == user_id, Consent_element.element_id == element_id).first()
@@ -734,7 +741,7 @@ def delete_element(element_id: int,user_id: int = Depends(check_end_user)):
 
 
 # update consent เผื่อเวลาที่ object ที่เคยให้ไปหมดอายุ และยกเลิก revoked consent 
-@app.put("/update/consent/{consent_dataset_id}", tags=["End user"], description="update consent กรณีที่ object ที่เคยให้ไปหมดอายุ และยกเลิก revoked consent")
+@app.put("/update/consent/{consent_dataset_id}", tags=["End user"], description="สำหรับให้ end user มา update consent กรณีที่ object ที่เคยให้ไป expired หรือทำการ revoke ไปแล้ว")
 def update_consent(consent_dataset_id: int, user_id: int = Depends(check_end_user)):
     session = connect_db()
     consent = session.query(Consent_dataset).filter(Consent_dataset.consent_dataset_id == consent_dataset_id, Consent_dataset.user_id == user_id).first()
@@ -748,7 +755,7 @@ def update_consent(consent_dataset_id: int, user_id: int = Depends(check_end_use
 
 
 # revoke consent : update revoke_date
-@app.put("/revoke/consent/{consent_dataset_id}", tags=["End user"])
+@app.put("/revoke/consent/{consent_dataset_id}", tags=["End user"], description="สำหรับให้ end user ถอน consent ")
 def update_revoke_date(consent_dataset_id: int, user_id: int = Depends(current_user)):
     session = connect_db()
     consent = session.query(Consent_dataset).filter(Consent_dataset.consent_dataset_id == consent_dataset_id, Consent_dataset.user_id == user_id).first()
@@ -763,7 +770,7 @@ def update_revoke_date(consent_dataset_id: int, user_id: int = Depends(current_u
         raise HTTPException(status_code=400, detail="This object has been revoked")
 
 
-@app.put("/consent/response/object/{request_id}", tags=["End user"])
+@app.put("/consent/response/object/{request_id}", tags=["End user"], description="สำหรับให้ end user มา response object ที่ consumer ขอ request มา")
 def consent_response(request_id: int,response: bool, user_id: int = Depends(check_end_user)):
     session = connect_db()
     res = session.query(Consent_request).filter(Consent_request.request_id == request_id).first()
@@ -778,7 +785,7 @@ def consent_response(request_id: int,response: bool, user_id: int = Depends(chec
 
 
 # end user
-@app.put("/consent/response/element/{req_element_id}", tags=["End user"])
+@app.put("/consent/response/element/{req_element_id}", tags=["End user"], description="สำหรับให้ end user มา response element ที่ consumer ขอ request มา")
 def consent_response(req_element_id: int, response: bool, user_id: int = Depends(check_end_user)):
     session = connect_db()
     res = session.query(Element_request).filter(Element_request.req_element_id == req_element_id).first()
@@ -800,7 +807,7 @@ def consent_response(req_element_id: int, response: bool, user_id: int = Depends
             raise HTTPException(status_code=404, detail="Consent element request not found.")
     
 
-@app.post("/request/consent/element/{element_id}", tags=["Data Consumer"])
+@app.post("/request/consent/element/{element_id}", tags=["Data Consumer"], description="สำหรับให้ data consumer ขอ request element ของ object ที่ขอ request ไป")
 def consent_request(element_id: int, user_id: int = Depends(check_data_consumer)):
     session = connect_db()
     req_date = datetime.now()
