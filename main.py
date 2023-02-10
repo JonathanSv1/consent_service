@@ -48,7 +48,6 @@ class User(BaseModel):
 
 #ของ End user
 class Check_object_method(str, Enum):
-    show_all = "show all"
     waiting_consent_object = "waiting consent object"
     waiting_consent_element = "waiting consent element"
     consented = "consented"
@@ -94,7 +93,7 @@ def register(username: str, password: str, name: str , role: Roles_method):
     session = connect_db()
     existing_user = session.query(UserAccount).filter(UserAccount.username == username).first()
     if existing_user:
-        return {"message": "username already exists"}
+        raise HTTPException(status_code=400, detail="Username already exists.")
     elif role == "end_user":
         hashed_password = pwd_context.hash(password)
         new_user = UserAccount(username=username, password=hashed_password, name=name, role_id=1)
@@ -299,7 +298,7 @@ def consent_request(object_id: int, req_info: str, user_id: int = Depends(check_
         session.add(cs_req)
     session.commit()
     session.close()
-    return {"A consent request has been sent to the End_User"}
+    return {"message":"A consent request has been sent to the End_User"}
 
 
 # update request ของ consumer กรณีที่ response expired
@@ -315,7 +314,7 @@ def update_request(request_id: int, user_id: int = Depends(check_data_consumer))
         request.response_date = None
         session.commit()
         session.close()
-        return {"request has been update"}
+        return {"message":"request has been update"}
 
 # list object
 @app.get("/list/method/owner", tags=["Data Owner"], description="สำหรับให้ data owner ดูว่าเพิ่มข้อมูลอะไรไปแล้วบ้าง")
@@ -377,7 +376,7 @@ def insert_object(object_name: str, show:bool, process:bool, forward:bool, conse
     session.add(new_object)
     session.commit()
     session.close()
-    return {"Object insert success!!"}
+    return {"message":"Object insert success!!"}
 
 # update object
 @app.put("/update/object/{object_id}", tags=["Data Owner"], description="สำหรับให้ data owner ใช้แก้ไขข้อมูลที่เคยเพิ่ม")
@@ -386,7 +385,7 @@ def update_object(object_id: int, object_name: str, show: bool, process: bool, f
     obj = session.query(Object).filter(Object.object_id == object_id).first()
     if obj.owner_id != user_id:
         session.close()
-        raise HTTPException(status_code=400, detail="You are not authorized to update this opject")
+        raise HTTPException(status_code=400, detail="You are not authorized to update this object")
     if obj:
         if consent_method in ["user", "per_request"]:
             if expire is None:
@@ -400,7 +399,7 @@ def update_object(object_id: int, object_name: str, show: bool, process: bool, f
         obj.expire = expire
         obj.consent_method=consent_method
         session.commit()
-        return {"update object success."}
+        return {"message":"update object success."}
     else:
         session.close()
         raise HTTPException(status_code=400, detail="Object not found")
@@ -413,7 +412,7 @@ def delete_object(object_id: int, user_id: int = Depends(current_user)):
     if obj and obj.owner_id == user_id:
         session.delete(obj)
         session.commit()
-        return {"Object deleted success!!"}
+        return {"message":"Object deleted success!!"}
     if obj and obj.owner_id != user_id:
         session.close()
         raise HTTPException(status_code=400, detail="You are not authorized to delete this object")
@@ -432,7 +431,7 @@ def insert_element(object_id: int,name: str, user_id: int = Depends(check_data_o
         session.add(new_element)
         session.commit()
         session.close()
-        return {"insert object element success."}
+        return {"message":"insert object element success."}
     else:
         raise HTTPException(status_code=404, detail="Object not found or not inserted by this user.")
     
@@ -448,7 +447,7 @@ def update_element(element_id: int, name: str, user_id: int = Depends(check_data
         raise HTTPException(status_code=400, detail="You are not authorized to update this element")
     element.name = name
     session.commit()
-    return {"Element updated successfully."}
+    return {"message":"Element updated successfully."}
 
 
 @app.delete("/delete/element/{element_id}", tags=["Data Owner"], description="สำหรับให้ data owner ใช้ลบ element ที่เคยเพิ่ม")
@@ -458,7 +457,7 @@ def delete_object(element_id: int, user_id: int = Depends(current_user)):
     if element and element.owner_id == user_id:
         session.delete(element)
         session.commit()
-        return {"Element deleted successfully."}
+        return {"message":"Element deleted successfully."}
     if element and element.owner_id != user_id:
         session.close()
         raise HTTPException(status_code=400, detail="You are not authorized to delete this element.")
@@ -479,32 +478,6 @@ def delete_object(element_id: int, user_id: int = Depends(current_user)):
 @app.get("/list/method/user", tags=["End user"], description="สำหรับให้ end user ใช้ดูข้อมูลต่าง ๆ")
 def list_consented(check_method: Check_object_method, user_id: int = Depends(check_end_user)):
     session = connect_db()
-    if check_method == "show all":
-        if consented:
-            for obj in consented:
-                objects = session.query(Object).filter(Object.object_id == obj.object_id).first()
-                expire_day = objects.expire
-                expire_date = obj.consent_dataset_date + timedelta(days=expire_day)
-                if expire_date < date.today():
-                    status = 'expired'
-                elif obj.revoke_date:
-                    status = 'revoked'
-                else:
-                    status = 'valid'
-                consented_list.append({"object_id":objects.object_id,"object_name": objects.object_name,"consent_dataset_id":obj.consent_dataset_id,"consent_dataset_date":obj.consent_dataset_date,"expire_date":expire_date,"status":status})
-            for res in responses:
-                if res.response is not None:
-                    obj = session.query(Object).filter(Object.object_id == res.object_id).first()
-                    expire_day = obj.expire
-                    expire_date = res.response_date + timedelta(days=expire_day)
-                    if expire_date < date.today():
-                        status = 'expired'
-                    else:
-                        status = 'valid'
-                    if obj:
-                        consented_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "request_id": res.request_id, "response": res.response, "reseponse_date": res.response_date, "expire_date":expire_date, "status":status,"consumer_id": res.consumer_id})
-            return consented_list
-        
     if check_method == "waiting consent object":
         objects_user = session.query(Object).filter(Object.consent_method == "user").all()
         consented_objects = session.query(Consent_dataset).filter(Consent_dataset.user_id == user_id).all()
@@ -735,7 +708,7 @@ def delete_element(element_id: int,user_id: int = Depends(check_end_user)):
     if consent:
         session.delete(consent)
         session.commit()
-        return {"Element has been deleted."}
+        return {"message":"Element has been deleted."}
     else:
         raise HTTPException(status_code=404, detail="Element not found.")
 
@@ -751,7 +724,7 @@ def update_consent(consent_dataset_id: int, user_id: int = Depends(check_end_use
     consent.revoke_date = None
     session.commit()
     session.close()
-    return {"Consent has been updated."}
+    return {"message":"Consent has been updated."}
 
 
 # revoke consent : update revoke_date
@@ -765,7 +738,7 @@ def update_revoke_date(consent_dataset_id: int, user_id: int = Depends(current_u
         consent.revoke_date = datetime.now()
         session.commit()
         session.close()
-        return {"consent has been revoke"}
+        return {"message":"consent has been revoke"}
     else:
         raise HTTPException(status_code=400, detail="This object has been revoked")
 
@@ -779,7 +752,7 @@ def consent_response(request_id: int,response: bool, user_id: int = Depends(chec
         res.response_date = datetime.now()
         session.commit()
         session.close()
-        return {"Consent request has been response"}
+        return {"message":"Consent request has been response"}
     else:
         raise HTTPException(status_code=404, detail="Consent request not found")
 
@@ -798,7 +771,7 @@ def consent_response(req_element_id: int, response: bool, user_id: int = Depends
         res.response = response
         session.commit()
         session.close()
-        return {"Consent element request has been responded."}
+        return {"message":"Consent element request has been responded."}
     else:
         session.close()
         if res and res.user_id == user_id and res.response is not None:
