@@ -149,8 +149,10 @@ def list_object_consumer(check_method: List_object, user_id: int = Depends(check
                 for ele in elements:     
                     ele_list.append({"element_id": ele.element_id, "name": ele.name})
             object_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "show": obj.show, "process": obj.process, "forward": obj.forward, "expire": obj.expire, "consent_method": obj.consent_method, "object_field": ele_list})
-        session.close()
-        return object_list
+            session.close()
+            return object_list
+        else:
+            raise HTTPException(status_code=404, detail="Object not found.")
 
     if check_method == "per request":
         objects = session.query(Object).filter(Object.consent_method == "per_request").all()
@@ -276,7 +278,8 @@ def list_consented(object_id: int, user_id: int = Depends(check_data_consumer)):
         for user in end_users:
             cs_list.append({"object_id": object.object_id, "object_name": object.object_name, "user_id": user.user_id, "user_name": user.name})
         return {"total_user":len(cs_list), "consented_objects": cs_list}
-
+    else: 
+        raise HTTPException(status_code=404, detail="consent not found.")
 
 
 # consent request
@@ -646,10 +649,10 @@ def list_consented(check_method: Check_object_method, user_id: int = Depends(che
                         status = 'valid'
                     if obj:
                         consented_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "request_id": res.request_id, "response": res.response, "reseponse_date": res.response_date, "expire_date":expire_date, "status":status,"consumer_id": res.consumer_id, "object_field":list_element})
-            if not consented_list:
-                raise HTTPException(status_code=404, detail="No consent reseponse found.")
-            else:
-                return consented_list
+        if not consented_list:
+            raise HTTPException(status_code=404, detail="No consent response found.")
+        else:
+            return consented_list
     else:
         raise HTTPException(status_code=404,detail="No consented data found")
 
@@ -762,22 +765,20 @@ def consent_response(request_id: int,response: bool, user_id: int = Depends(chec
 def consent_response(req_element_id: int, response: bool, user_id: int = Depends(check_end_user)):
     session = connect_db()
     res = session.query(Element_request).filter(Element_request.req_element_id == req_element_id).first()
+    if res is None:
+        raise HTTPException(status_code=404, detail="Consent element request not found.")
     res_cs = session.query(Consent_request).filter(Consent_request.request_id == res.req_consent_id).first()
-    if res_cs.response is None: 
+    if res.user_id != user_id:
+        raise HTTPException(status_code=400, detail="You are not the owner of this request.")
+    if res_cs.response is None:
         raise HTTPException(status_code=400, detail="Please consent object first.")
     if res_cs.response is False:
-        raise HTTPException(status_code=400, detail="request denied.")
-    if res and res.user_id == user_id and res.response is None:
-        res.response = response
-        session.commit()
-        session.close()
-        return {"message":"Consent element request has been responded."}
-    else:
-        session.close()
-        if res and res.user_id == user_id and res.response is not None:
-            raise HTTPException(status_code=400, detail="Consent element request has already been responded.")
-        else:
-            raise HTTPException(status_code=404, detail="Consent element request not found.")
+        raise HTTPException(status_code=400, detail="Object request has been denied.")
+    res.response = response
+    session.commit()
+    session.close()
+    return {"message":"Consent element request has been responded."}
+
     
 
 @app.post("/request/consent/element/{element_id}", tags=["Data Consumer"], description="สำหรับให้ data consumer ขอ request element ของ object ที่ขอ request ไป")
@@ -786,10 +787,13 @@ def consent_request(element_id: int, user_id: int = Depends(check_data_consumer)
     req_date = datetime.now()
     ele = session.query(Element).filter(Element.element_id == element_id).first()
     obj = session.query(Object).filter(Object.object_id == ele.object_id).first()
+    res_cs = session.query(Consent_request).filter(Consent_request.object_id == obj.object_id, Consent_request.consumer_id == user_id).first()
     if ele is None:
         raise HTTPException(status_code=404, detail="Object not found")
     if obj.consent_method != "per_request":
         raise HTTPException(status_code=404, detail="Invalid consent method")
+    if res_cs is None:
+        raise HTTPException(status_code=400, detail="Please request object first.")
     end_users = session.query(UserAccount).filter(UserAccount.role_id == 1).all()
     posted_user_ids = [cs_req.user_id for cs_req in session.query(Element_request).filter(Element_request.element_id == element_id, Element_request.consumer_id == user_id).all()]
     for user in end_users:
