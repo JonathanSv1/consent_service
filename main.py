@@ -149,10 +149,9 @@ def list_object_consumer(check_method: List_object, user_id: int = Depends(check
                 for ele in elements:     
                     ele_list.append({"element_id": ele.element_id, "name": ele.name})
             object_list.append({"object_id": obj.object_id, "object_name": obj.object_name, "show": obj.show, "process": obj.process, "forward": obj.forward, "expire": obj.expire, "consent_method": obj.consent_method, "object_field": ele_list})
-            session.close()
-            return object_list
-        else:
-            raise HTTPException(status_code=404, detail="Object not found.")
+        session.close()
+        return object_list
+
 
     if check_method == "per request":
         objects = session.query(Object).filter(Object.consent_method == "per_request").all()
@@ -382,7 +381,7 @@ def insert_object(object_name: str, show:bool, process:bool, forward:bool, conse
     return {"message":"Object insert success!!"}
 
 # update object
-@app.put("/update/object/{object_id}", tags=["Data Owner"], description="สำหรับให้ data owner ใช้แก้ไขข้อมูลที่เคยเพิ่ม")
+@app.put("/update/object", tags=["Data Owner"], description="สำหรับให้ data owner ใช้แก้ไขข้อมูลที่เคยเพิ่ม")
 def update_object(object_id: int, object_name: str, show: bool, process: bool, forward: bool, consent_method: Consent_method,expire: Optional[int] = None, user_id: int = Depends(check_data_owner)):
     session = connect_db()
     obj = session.query(Object).filter(Object.object_id == object_id).first()
@@ -439,7 +438,7 @@ def insert_element(object_id: int,name: str, user_id: int = Depends(check_data_o
         raise HTTPException(status_code=404, detail="Object not found or not inserted by this user.")
     
 # update element
-@app.put("/update/element/{element_id}", tags=["Data Owner"], description="สำหรับให้ data owner ใช้แก้ไข element ที่เคยเพิ่ม")
+@app.put("/update/element", tags=["Data Owner"], description="สำหรับให้ data owner ใช้แก้ไข element ที่เคยเพิ่ม")
 def update_element(element_id: int, name: str, user_id: int = Depends(check_data_owner)):
     session = connect_db()
     element = session.query(Element).filter(Element.element_id == element_id).first()
@@ -746,7 +745,7 @@ def update_revoke_date(consent_dataset_id: int, user_id: int = Depends(current_u
         raise HTTPException(status_code=400, detail="This object has been revoked")
 
 
-@app.put("/consent/response/object/{request_id}", tags=["End user"], description="สำหรับให้ end user มา response object ที่ consumer ขอ request มา")
+@app.put("/consent/response/object", tags=["End user"], description="สำหรับให้ end user มา response object ที่ consumer ขอ request มา")
 def consent_response(request_id: int,response: bool, user_id: int = Depends(check_end_user)):
     session = connect_db()
     res = session.query(Consent_request).filter(Consent_request.request_id == request_id).first()
@@ -761,7 +760,7 @@ def consent_response(request_id: int,response: bool, user_id: int = Depends(chec
 
 
 # end user
-@app.put("/consent/response/element/{req_element_id}", tags=["End user"], description="สำหรับให้ end user มา response element ที่ consumer ขอ request มา")
+@app.put("/consent/response/element", tags=["End user"], description="สำหรับให้ end user มา response element ที่ consumer ขอ request มา")
 def consent_response(req_element_id: int, response: bool, user_id: int = Depends(check_end_user)):
     session = connect_db()
     res = session.query(Element_request).filter(Element_request.req_element_id == req_element_id).first()
